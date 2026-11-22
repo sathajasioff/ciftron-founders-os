@@ -67,6 +67,15 @@ Run everything with `npm run test:all`. The unit, database and API tests need no
 | Calendar in Jarvis and Home (titles and times only) | business "calendar"; api "keys: Google test…"; e2e 35 |
 | Calls: Meet import with speakers, paste, upload, AI review, Brain, Playbook | business "meet", "call review"; api "google: Meet calls…", "calls: AI review…"; db "calls…"; e2e 33 |
 | Revenue: Stripe (net of refunds, MRR) + logged payments, by month and currency | business "stripe", "revenue summary"; api "revenue"; db "…revenue_entries…"; e2e 34 |
+| **Build and ship (Phase 10)** | |
+| Page sanitizer: scripts, handlers, frames, forms, bad links, CSS tricks removed | build "sanitizer" |
+| Brand theme with readable contrast; layouts validated; copy kept word for word and escaped | build "theme", "page render" |
+| Page build: small AI design call, server render, draft, preview link, approval | build "page build" ×2; db "funnel_pages…"; e2e 36 |
+| Preview link: shared pages only, sandboxed, noindex; bad tokens 404 | build "preview link" |
+| Copy for HighLevel, share toggle, approve marks the page approved | e2e 36 |
+| Slides: validation, one AI call per module, joined deck, approval | build "slides" ×3; db "…program_decks…"; e2e 37 |
+| PowerPoint: real file, every slide and speaker notes, CTA label | build "pptx"; e2e 37 (download) |
+| Deck viewer edits with version check; PDF print layout | build "slide HTML"; e2e 37 |
 | **MCP and routines** | |
 | MCP protocol (current and legacy clients, headers, versions, Origin) | mcp protocol tests ×10; api "mcp over HTTP"; checked against the official MCP SDK client |
 | Revocable read or read-write tokens, hashed | mcp "tokens"; api "account … MCP token", "mcp over HTTP"; db "mcp tables"; e2e 26 |

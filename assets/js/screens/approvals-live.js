@@ -48,7 +48,7 @@ export async function render(el, ctx) {
 
   async function act(a, what) {
     try {
-      if (what === 'edit') return a.type === 'Graphic' || a.type === 'Program' ? (location.hash = '#' + a.target_module) : edit(a);
+      if (what === 'edit') return ['Graphic', 'Program', 'Funnel page', 'Slides'].includes(a.type) ? (location.hash = '#' + a.target_module) : edit(a);
       if (what === 'hl-social') return sendSocial(a);
       if (what === 'hl-email') return sendEmail(a);
       if (what === 'approve') {
@@ -65,6 +65,11 @@ export async function render(el, ctx) {
           await setSeq('approved'); undoModule = () => setSeq('draft');
         }
         if (a.target_module === 'funnels' && a.payload?.funnel_version_id) { await q(live.sb.from('funnel_versions').update({ status: 'approved' }).eq('id', a.payload.funnel_version_id)); undoModule = () => q(live.sb.from('funnel_versions').update({ status: 'draft' }).eq('id', a.payload.funnel_version_id)); }
+        if (a.target_module === 'funnels' && a.payload?.page_id) { await q(live.sb.from('funnel_pages').update({ status: 'approved' }).eq('id', a.payload.page_id)); undoModule = () => q(live.sb.from('funnel_pages').update({ status: 'draft' }).eq('id', a.payload.page_id)); }
+        if (a.target_module === 'programs' && a.payload?.deck_id) {
+          const setDeck = async (status) => { const d = (await q(live.sb.from('program_decks').select('id, version').eq('id', a.payload.deck_id)))[0]; if (d) await versionedUpdate('program_decks', d, { status }); };
+          await setDeck('approved'); undoModule = () => setDeck('draft');
+        }
         if (a.target_module === 'graphics' && a.payload?.graphic_version_id) { await q(live.sb.from('graphic_versions').update({ status: 'approved' }).eq('id', a.payload.graphic_version_id)); undoModule = () => q(live.sb.from('graphic_versions').update({ status: 'draft' }).eq('id', a.payload.graphic_version_id)); }
         if (a.target_module === 'programs' && a.payload?.program) {
           // Approving a proposal builds the program board exactly as proposed.
@@ -136,6 +141,7 @@ function card(a) {
       <h3>${esc(a.title)}</h3><div class="xs muted">${esc(a.source_agent || 'AI')} · ${ago(a.created_at)}${a.tags.length ? ' · ' + a.tags.map((x) => '#' + esc(x)).join(' ') : ''}</div></div></div>
     ${a.payload?.storage_path ? `<img data-thumb="${esc(a.payload.storage_path)}" alt="" style="margin-top:12px;max-height:220px;max-width:100%;border-radius:10px;background:var(--surface-2)">` : ''}
     <div class="preview-box small" style="margin-top:12px;max-height:220px">${marks(a.payload?.body || '')}</div>
+    ${/^\/p\/[A-Za-z0-9_-]{16,64}$/.test(a.payload?.preview_path || '') ? `<a class="btn btn-sm" style="margin-top:10px" href="${a.payload.preview_path}" target="_blank" rel="noopener">${icon('ext')} Open page preview</a>` : ''}
     <div class="row wrap" style="margin-top:12px">
       ${tr ? `<button class="btn btn-sm" data-act="restore" data-id="${a.id}">${t('c.restore')}</button>` : `
       ${a.status !== 'approved' ? `<button class="btn btn-sm btn-primary" data-act="approve" data-id="${a.id}">${icon('check')} ${t('c.approve')}</button>` : ''}

@@ -13,6 +13,8 @@ import {
 import { extractText } from './_lib/brain.js';
 import { revenueNow } from './_lib/context.js';
 import { runRoutine } from './_lib/routines.js';
+import { STYLES, themeFrom, PAGE_SYSTEM, pagePrompt, validateDesign, renderPage, sanitizePage, newToken } from './_lib/page.js';
+import { SLIDES_SYSTEM, slidesPrompt, validateSlides, joinDeck, buildPptx } from './_lib/slides.js';
 
 export const config = { maxDuration: 60 };
 const one = async (q) => { const { data, error } = await q; if (error) throw new HttpError(400, error.message); return data; };
@@ -307,6 +309,65 @@ No forced sales pitch.`;
       .map((m) => ({ id: m.id, name: m.name || m.id, context: m.context_length || null })).sort((x, y) => x.name.localeCompare(y.name)).slice(0, 400);
     return { models, openrouter: true };
   }
+
+  // Funnel page: a designed HTML page from approved funnel copy and the brand board. Saved as a draft with a private preview link.
+  if (a === 'page_build') {
+    const f = await one(db.from('funnels').select('*').eq('id', String(body.funnel_id || '')).single());
+    let q = db.from('funnel_versions').select('id, version_no, output').eq('funnel_id', f.id);
+    q = body.version_id ? q.eq('id', String(body.version_id)) : q.order('version_no', { ascending: false }).limit(1);
+    const v = await one(q.maybeSingle());
+    if (!v) throw new HttpError(400, 'Write the funnel copy first, then design the page');
+    const offer = f.offer_id ? await one(db.from('offers').select('name, price, currency, cadence').eq('id', f.offer_id).maybeSingle()) : null;
+    const style = STYLES.includes(body.style) ? body.style : 'brand';
+    const theme = themeFrom(await one(db.from('brand_board').select('palettes, fonts').maybeSingle()), style);
+    const language = body.language === 'fr-qc' ? 'Quebec French' : 'English';
+    const design = validateDesign(parseJson(await ask(PAGE_SYSTEM, pagePrompt({ out: v.output, offer, funnelName: f.name, instruction: String(body.instruction || '').slice(0, 800), language }), 1500)), v.output);
+    let html;
+    try { html = sanitizePage(renderPage({ out: v.output, design, theme, title: f.name, language }), { orderUrl: f.order_form_url }); } catch (e) { throw new HttpError(502, e.message); }
+    const last = await one(db.from('funnel_pages').select('version_no').eq('funnel_id', f.id).order('version_no', { ascending: false }).limit(1).maybeSingle());
+    const token = newToken();
+    const page = await one(db.from('funnel_pages').insert({ owner_id: user.id, funnel_id: f.id, funnel_version_id: v.id, version_no: (last?.version_no || 0) + 1, style, html, public_token: token, shared: true }).select('id, version_no').single());
+    const apId = await approval({ type: 'Funnel page', title: `${f.name} page v${page.version_no}`, payload: { page_id: page.id, funnel_id: f.id, preview_path: `/p/${token}`, body: `Designed page for ${f.name} (copy v${v.version_no}, ${style} style). Open the preview link to review it.` }, tags: ['funnel', 'page'], source_agent: 'Funnel Builder', target_module: 'funnels' });
+    await one(db.from('funnel_pages').update({ approval_id: apId }).eq('id', page.id));
+    return { page_id: page.id, version_no: page.version_no, preview_path: `/p/${token}` };
+  }
+
+  // Program slides: a deck from the program's modules and lessons (or one module). Draft in Approvals.
+  if (a === 'slides_build') {
+    const prog = await one(db.from('programs').select('*').eq('id', String(body.program_id || '')).single());
+    let mq = db.from('program_modules').select('id, title, sort').eq('program_id', prog.id).order('sort');
+    if (body.module_id) mq = mq.eq('id', String(body.module_id));
+    const mods = await one(mq);
+    if (!mods.length) throw new HttpError(400, 'Add a module and lessons to this program first');
+    const lessons = await one(db.from('program_lessons').select('module_id, title, body, sort').in('module_id', mods.map((m) => m.id)).order('sort'));
+    const modules = mods.map((m) => ({ title: m.title, lessons: lessons.filter((l) => l.module_id === m.id) }));
+    if (!modules.some((m) => m.lessons.length)) throw new HttpError(400, 'Add at least one lesson first');
+    const perLesson = Math.max(2, Math.min(4, Math.round(+body.per_lesson || 3)));
+    const sys = await withDna(SLIDES_SYSTEM);
+    const todo = modules.filter((m) => m.lessons.length).slice(0, 10);
+    // One call per module, in parallel, so a whole program fits in the time limit.
+    const parts = await Promise.all(todo.map((m, i) => ask(sys, slidesPrompt({ program: prog, module: m, index: i, total: todo.length, language: body.language, perLesson, withCta: i === todo.length - 1 }), 4000)
+      .then((t) => validateSlides(parseJson(t), { min: 1 }))));
+    const deck = validateSlides(joinDeck(prog, parts));
+    const style = STYLES.includes(body.style) ? body.style : 'brand';
+    const row = await one(db.from('program_decks').insert({ owner_id: user.id, program_id: prog.id, module_id: body.module_id || null, title: deck.title, style, slides: deck.slides, version: 1 }).select('id, version').single());
+    const apId = await approval({ type: 'Slides', title: `Slides: ${deck.title}`, payload: { deck_id: row.id, program_id: prog.id, body: deck.slides.map((s, i) => `${i + 1}. ${s.title || s.quote}${s.bullets.length ? '\n' + s.bullets.map((b) => '- ' + b).join('\n') : ''}`).join('\n\n') }, tags: ['program', 'slides'], language: body.language === 'fr-qc' ? 'fr-qc' : 'en', source_agent: 'Content Strategist', target_module: 'programs' });
+    await one(db.from('program_decks').update({ approval_id: apId, version: row.version + 1 }).eq('id', row.id).eq('version', row.version));
+    return { deck_id: row.id, slides: deck.slides.length };
+  }
+
+  // PowerPoint file for a deck, built on the server from the saved slides and brand colours.
+  if (a === 'slides_pptx') {
+    const d = await one(db.from('program_decks').select('title, style, slides').eq('id', String(body.deck_id || '')).single());
+    const theme = themeFrom(await one(db.from('brand_board').select('palettes, fonts').maybeSingle()), d.style);
+    const deck = validateSlides({ title: d.title, slides: d.slides });
+    const b64 = await buildPptx(deck, theme);
+    const name = (d.title.replace(/[^A-Za-z0-9 _-]/g, '').trim().replace(/\s+/g, '-') || 'slides').slice(0, 60) + '.pptx';
+    return { b64, filename: name, theme };
+  }
+
+  // Theme only, so the browser can render slides and pages in brand colours.
+  if (a === 'theme') return { theme: themeFrom(await one(db.from('brand_board').select('palettes, fonts').maybeSingle()), STYLES.includes(body.style) ? body.style : 'brand') };
 
   if (a === 'learning_refresh') {
     const items = await one(db.from('approvals').select('type, status, tags, language, authored_by, trashed_at').order('created_at', { ascending: false }).limit(300));

@@ -87,6 +87,7 @@ export async function render(el, ctx = {}) {
       settle(api('meta', { body: { range: 'last_7d' } })),
     ]);
     const { count } = await live.sb.from('approvals').select('id', { count: 'exact', head: true }).eq('status', 'pending').is('trashed_at', null);
+    if (!$('#jv-summary', el)) return; // left the screen while it loaded
     const on = (agents.v || []).filter((a) => a.enabled).length, total = (agents.v || []).length;
     const parts = [`${on} of ${total} agents are on`, `${count || 0} draft${count === 1 ? '' : 's'} waiting for you`];
     if (board.v) parts.push(`${board.v.stats.newLeads7d} new lead${board.v.stats.newLeads7d === 1 ? '' : 's'} this week and ${board.v.stats.active} open in the pipeline`);

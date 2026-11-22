@@ -49,7 +49,9 @@ def _api(route):
                            'charges': [{'id': 'ch_1', 'amount': 497, 'currency': 'USD', 'date': '2026-11-03', 'description': 'Lead Gen'}],
                            'summary': {'currencies': ['USD', 'CAD'], 'mrr': {'USD': 497, 'CAD': 1500}, 'this_month': {'USD': 497, 'CAD': 1500}, 'last_month': {'USD': 994, 'CAD': 1500},
                                        'months': [{'month': m, 'USD': {'stripe': v, 'manual': 0, 'total': v}, 'CAD': {'stripe': 0, 'manual': 1500, 'total': 1500}} for m, v in [('2026-06', 0), ('2026-07', 497), ('2026-08', 497), ('2026-09', 994), ('2026-10', 994), ('2026-11', 497)]]}}, 'research_fetch': {'posts': 12, 'median': 1800},
-               'graphic': {'b64': 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP4z8DwHwyBNAOU8R8AjjgL9YdRIygAAAAASUVORK5CYII=', 'media_type': 'image/png', 'prompt': 'p', 'model': 'm', 'cost': 0.04}, 'rewrite_email': {'subject': 'New subject', 'preview': '', 'body': 'Shorter body'}}.get(a, {'ok': True})
+               'graphic': {'b64': 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP4z8DwHwyBNAOU8R8AjjgL9YdRIygAAAAASUVORK5CYII=', 'media_type': 'image/png', 'prompt': 'p', 'model': 'm', 'cost': 0.04}, 'rewrite_email': {'subject': 'New subject', 'preview': '', 'body': 'Shorter body'},
+               'page_build': {'page_id': 'pg2', 'version_no': 2, 'preview_path': '/p/tok_x'}, 'slides_build': {'deck_id': 'dk2', 'slides': 6}, 'slides_pptx': {'b64': 'UEsDBAo=', 'filename': 'Lead-Response-Bootcamp.pptx'},
+               'theme': {'theme': {'bg': '#0E1A2B', 'surface': '#FFFFFF14', 'text': '#F5F5F3', 'muted': '#C9C9C3', 'accent': '#C8F36B', 'accentText': '#111111', 'highlight': '#C8F36B', 'fonts': {'heading': 'Space Grotesk', 'body': 'DM Sans'}}}}.get(a, {'ok': True})
     elif path == 'account' and body.get('action') == 'mcp_token_create': out = {'token': 'cfos_' + 'T' * 43, 'id': 'mt2', 'name': body['name'], 'scope': body['scope'], 'token_prefix': 'cfos_TTTTTTT'}
     elif path == 'account' and body.get('action') == 'member_invite': out = {'member': {'id': 'wm1', 'email': body['email'], 'role': 'member'}}
     elif path == 'account' and body.get('action') == 'mcp_undo': out = {'ok': True, 'message': 'Restored the previous value'}
@@ -446,9 +448,50 @@ try:
         assert [c for c in calls if c[0] == 'google'][-1][2] == {'action': 'start'}
         pg.goto(base + '#home'); pg.wait_for_selector('#todaycal'); assert pg.locator('text=Discovery call with Marc').count() == 1
         assert pg.locator('#homerev').count() == 1
+        # 36. Phase 10: designed funnel pages
+        pg.goto(base + '#funnels'); pg.wait_for_selector('text=Meta Ads review call'); pg.click('[data-tab=design]'); pg.wait_for_selector('text=Page v1')
+        pg.select_option('#dstyle', 'light'); pg.fill('#dnote', 'Photo of me by the headline'); pg.click('#dbuild'); pg.wait_for_selector('text=Page v2 is in Approvals')
+        pb = [c for c in calls if c[0] == 'studio'][-1][2]
+        assert pb['action'] == 'page_build' and pb['funnel_id'] == 'fn1' and pb['version_id'] == 'fv1' and pb['style'] == 'light' and pb['instruction'] == 'Photo of me by the headline', pb
+        pg.click('[data-pv=pg1]'); pg.wait_for_selector('#pvf'); assert 'Find your lead leaks' in pg.frame_locator('#pvf').locator('h1').inner_text(); pg.click('.modal [data-close]')
+        pg.uncheck('[data-share=pg1]'); pg.wait_for_selector('text=Preview link off')
+        assert pg.evaluate("window.__FAKE_DB__.funnel_pages[0].shared") is False
+        hlc = pg.evaluate("import('/assets/js/screens/funnels-live.js').then(m => m.forHighLevel(window.__FAKE_DB__.funnel_pages[0].html))")
+        assert hlc.startswith('\n<style>body{background:#111') and '<h1>Find your lead leaks</h1>' in hlc and '<html' not in hlc and '<body' not in hlc, hlc
+        shot(pg, 'funnel-design')
+        pg.evaluate('''() => window.__FAKE_DB__.approvals.push({ id: 'apfp', owner_id: '11111111-1111-1111-1111-111111111111', type: 'Funnel page', title: 'Meta Ads review call page v1', payload: { body: 'Designed page', page_id: 'pg1', funnel_id: 'fn1', preview_path: '/p/tok_abcdefghijklmnopqrstu' }, tags: ['funnel', 'page'], language: 'en', source_agent: 'Funnel Builder', target_module: 'funnels', status: 'pending', trashed_at: null, authored_by: 'ai', version: 1, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })''')
+        pg.goto(base + '#approvals'); pg.wait_for_selector('text=Meta Ads review call page v1')
+        assert pg.locator('a[href="/p/tok_abcdefghijklmnopqrstu"]').count() == 1
+        pg.click('[data-act=approve][data-id=apfp]'); pg.wait_for_timeout(500)
+        assert pg.evaluate("window.__FAKE_DB__.funnel_pages[0].status") == 'approved'
+
+        # 37. Phase 10: program slides, viewer edits, PowerPoint download
+        prog = 'pr9'
+        pg.evaluate('''() => { const o = '11111111-1111-1111-1111-111111111111', now = new Date().toISOString(); window.__FAKE_DB__.programs.unshift({ id: 'pr9', owner_id: o, name: 'Lead Response Bootcamp', description: 'd', stage: 'draft', version: 1, created_at: '2099-01-01T00:00:00Z', updated_at: now });
+          window.__FAKE_DB__.program_modules.push({ id: 'pm9', owner_id: o, program_id: 'pr9', title: 'Speed', sort: 0 }); window.__FAKE_DB__.program_lessons.push({ id: 'pl9', owner_id: o, module_id: 'pm9', title: 'First 10 minutes', body: 'Call fast', file_paths: [], sort: 0 }); }''')
+        pg.goto(base + '#programs'); pg.wait_for_selector('#mkslides'); pg.click('#mkslides'); pg.select_option('#ss', 'dark'); pg.select_option('#sp', '4'); pg.click('.modal [data-ok]'); pg.wait_for_selector('text=6 slides made')
+        sb = [c for c in calls if c[0] == 'studio'][-1][2]
+        assert sb == {'action': 'slides_build', 'program_id': prog, 'module_id': None, 'style': 'dark', 'language': 'en', 'per_lesson': 4}, sb
+        pg.evaluate('''(p) => window.__FAKE_DB__.program_decks.push({ id: 'dk1', owner_id: '11111111-1111-1111-1111-111111111111', program_id: p, module_id: null, title: 'Lead Response Bootcamp', style: 'brand', status: 'draft', authored_by: 'ai', version: 2, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+          slides: [{ layout: 'title', title: 'Lead Response Bootcamp', subtitle: 'Speed wins', bullets: [], left: [], right: [], quote: '', attribution: '', notes: '' }, { layout: 'bullets', title: 'Why speed', subtitle: '', bullets: ['Leads cool fast', '[EXAMPLE NEEDED]'], left: [], right: [], quote: '', attribution: '', notes: 'Say it' }, { layout: 'cta', title: 'Ready?', subtitle: 'Book a call', bullets: [], left: [], right: [], quote: '', attribution: '', notes: '' }] })''', prog)
+        pg.goto(base + '#home'); pg.goto(base + '#programs'); pg.wait_for_selector('[data-deck=dk1]'); pg.click('[data-deck=dk1]'); pg.wait_for_selector('.modal .sl')
+        assert 'Lead Response Bootcamp' in pg.locator('.modal .sl h1').inner_text()
+        pg.click('#dnext'); pg.wait_for_selector('.modal .sl mark'); pg.fill('#dedit [data-k=title]', 'Why speed matters'); pg.fill('#dedit [data-k=bullets]', 'Leads cool fast\nCall in five minutes')
+        assert pg.locator('.modal .sl h2').inner_text() == 'Why speed matters'
+        shot(pg, 'slides')
+        pg.click('#dsave'); pg.wait_for_selector('text=Slides saved')
+        dk = pg.evaluate("window.__FAKE_DB__.program_decks.find(d => d.id === 'dk1')")
+        assert dk['version'] == 3 and dk['authored_by'] == 'me' and dk['slides'][1]['title'] == 'Why speed matters' and dk['slides'][1]['bullets'] == ['Leads cool fast', 'Call in five minutes'], dk
+        with pg.expect_download() as dl: pg.click('[data-pptx=dk1]')
+        assert dl.value.suggested_filename == 'Lead-Response-Bootcamp.pptx'
+        assert [c for c in calls if c[0] == 'studio'][-1][2] == {'action': 'slides_pptx', 'deck_id': 'dk1'}
+        pg.evaluate('''() => window.__FAKE_DB__.approvals.push({ id: 'apdk', owner_id: '11111111-1111-1111-1111-111111111111', type: 'Slides', title: 'Slides: Lead Response Bootcamp', payload: { body: '1. Title', deck_id: 'dk1' }, tags: ['slides'], language: 'en', source_agent: 'Content Strategist', target_module: 'programs', status: 'pending', trashed_at: null, authored_by: 'ai', version: 1, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })''')
+        pg.goto(base + '#approvals'); pg.wait_for_selector('text=Slides: Lead Response Bootcamp'); pg.click('[data-act=approve][data-id=apdk]'); pg.wait_for_timeout(500)
+        dk = pg.evaluate("window.__FAKE_DB__.program_decks.find(d => d.id === 'dk1')")
+        assert dk['status'] == 'approved' and dk['version'] == 4, dk
         b.close()
 finally:
     srv.terminate()
 if errors:
     print('\n'.join(errors)); sys.exit(1)
-print('OK: live mode e2e (login, Brain, keys, Approvals, Chat, Team, Pipeline, HighLevel writes, Jarvis, Content, Emails, Funnels, Graphics, Vault, Goals, Programs, Routines, MCP, Error log, CSP, Team, My feed, Funnel, Playbook, Models, Calls, Revenue, Google)')
+print('OK: live mode e2e (login, Brain, keys, Approvals, Chat, Team, Pipeline, HighLevel writes, Jarvis, Content, Emails, Funnels, Graphics, Vault, Goals, Programs, Routines, MCP, Error log, CSP, Team, My feed, Funnel, Playbook, Models, Calls, Revenue, Google, Funnel pages, Slides)')

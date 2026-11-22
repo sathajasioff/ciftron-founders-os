@@ -401,3 +401,24 @@ This uses your own Google Cloud project, so your calendar and calls never pass t
 ## Vercel note
 
 The OS now has 12 server functions, the maximum on Vercel's free Hobby plan. Future features will extend these existing functions rather than add new ones.
+
+# Phase 10 update (funnel pages and program slides)
+
+1. **Required:** in Supabase SQL Editor, run `supabase/migrations/20261122000010_pages_slides.sql`.
+2. Nothing else to set up. Both features use your Anthropic key.
+
+## Designed funnel pages
+
+1. Open **Funnels**, pick a funnel and build its copy as usual (Brief tab, then **Build**).
+2. Open the **Design** tab. Pick a style (**My brand colors** uses your Graphics brand board), add optional notes, and click **Design page**. It takes about 20 seconds.
+3. The AI chooses the layout for each section. Your approved copy goes on the page word for word. Photos and proof show as marked boxes for you to fill. Every button links to the order form or booking URL from the Brief tab.
+4. The page goes to **Approvals** with an **Open page preview** link. The preview link works on your phone, is hidden from search engines and can be turned off any time (**Preview link on** checkbox).
+5. **To go live in HighLevel:** in your HighLevel funnel step, add a **Custom Code** element (full width, remove its padding), then in the OS click **Copy for HighLevel** and paste. Replace the photo boxes and proof with real ones in HighLevel, or download the HTML and edit it.
+
+## Program slides
+
+1. Open **Programs**, pick a program with lessons, and click **Make slides** (whole program or one module, style, language, slides per lesson).
+2. The AI writes slides only from your lesson notes. Where a real example belongs, the slide says [EXAMPLE NEEDED]. The deck goes to **Approvals**.
+3. **Open** a deck to page through it and edit titles, bullets and speaker notes. Saving keeps your edits; the AI never overwrites them.
+4. **PowerPoint** downloads a .pptx (opens in PowerPoint, Keynote and Google Slides, with speaker notes). **PDF** opens the print window: choose **Save as PDF**.
+

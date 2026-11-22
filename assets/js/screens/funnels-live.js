@@ -5,7 +5,16 @@ import { live, api, q, versionedUpdate } from '../live.js';
 import { hlWrite } from '../hl-ui.js';
 
 const TYPES = ['Lead generation funnel', 'Appointment booking funnel', 'Lead magnet funnel', 'Webinar funnel', 'Sales funnel'];
-const ui = { sel: null, tab: 'brief', ver: null };
+const ui = { sel: null, tab: 'brief', ver: null, style: 'brand' };
+const pageUrl = (tk) => `${location.origin}/p/${tk}`;
+
+// For a HighLevel Custom Code element: the font link and styles, then the page body.
+export function forHighLevel(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const links = [...doc.head.querySelectorAll('link[rel="stylesheet"]')].map((l) => l.outerHTML).join('\n');
+  const styles = [...doc.head.querySelectorAll('style')].map((x) => x.outerHTML).join('\n');
+  return `${links}\n${styles}\n${doc.body.innerHTML.trim()}`;
+}
 
 export function renderPage(out, orderUrl) {
   const e = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -23,12 +32,13 @@ export function renderPage(out, orderUrl) {
 }
 
 export async function render(el, ctx) {
-  let funnels = [], versions = [], offers = [];
+  let funnels = [], versions = [], offers = [], pages = [];
   const load = async () => {
     [funnels, offers] = await Promise.all([q(live.sb.from('funnels').select('*').order('updated_at', { ascending: false })), q(live.sb.from('offers').select('*').order('sort'))]);
     if (!funnels.find((f) => f.id === ui.sel)) ui.sel = funnels[0]?.id || null;
     versions = ui.sel ? await q(live.sb.from('funnel_versions').select('*').eq('funnel_id', ui.sel).order('version_no', { ascending: false })) : [];
     if (!versions.find((v) => v.id === ui.ver)) ui.ver = versions[0]?.id || null;
+    pages = ui.sel ? await q(live.sb.from('funnel_pages').select('id, version_no, funnel_version_id, style, public_token, shared, status, created_at').eq('funnel_id', ui.sel).order('version_no', { ascending: false })).catch(() => []) : [];
   };
   const refresh = async () => { await load(); draw(); };
 
@@ -43,7 +53,7 @@ export async function render(el, ctx) {
         <div>${f ? `
           <div class="card" style="margin-bottom:14px"><div class="row between wrap"><div><h2>${esc(f.name)}</h2><div class="small muted">${esc(f.funnel_type)}${offer ? ' · ' + esc(offer.name) : ''}${v ? ` · viewing v${v.version_no} · ${v.status === 'approved' ? 'approved' : 'in Approvals'}` : ''}</div></div>
             <div class="row">${v ? `<button class="btn" id="prev">${icon('ext')} ${t('c.preview')}</button>` : ''}<button class="btn btn-primary hl-btn" id="send" ${v?.status === 'approved' ? '' : 'disabled title="Approve this version in Approvals first"'}>${t('funnels.sendHL')}</button></div></div></div>
-          ${tabsHtml([['brief', 'Brief'], ['page', 'Sales page'], ['images', 'Image set'], ['emails', 'Buyer emails'], ['notes', 'HighLevel setup notes'], ['versions', `${t('c.versions')} (${versions.length})`]], ui.tab)}
+          ${tabsHtml([['brief', 'Brief'], ['page', 'Sales page'], ['design', `Design (${pages.length})`], ['images', 'Image set'], ['emails', 'Buyer emails'], ['notes', 'HighLevel setup notes'], ['versions', `${t('c.versions')} (${versions.length})`]], ui.tab)}
           <div id="fpane"></div>` : '<div class="empty card soft">Create a funnel: pick an offer, fill the brief, press Build.</div>'}</div>
       </div>`;
     el.querySelectorAll('[data-f]').forEach((x) => x.onclick = async () => { ui.sel = x.dataset.f; ui.ver = null; ui.tab = 'brief'; await refresh(); });
@@ -75,6 +85,36 @@ export async function render(el, ctx) {
       <div class="row"><span class="btn btn-accent">${esc(out.cta)}</span><span class="xs muted">${f.order_form_url ? 'Links to ' + esc(f.order_form_url) : '<span class="placeholder">[ORDER FORM URL missing]</span>'}</span></div>
       ${out.qualification_questions.length ? `<div><div class="eyebrow">Qualification questions</div><ul class="small">${out.qualification_questions.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
       <div class="divider"></div><div class="row"><input class="input grow" id="rev" placeholder="Ask for a revision, for example: shorter headline, more direct, add an FAQ about price"><button class="btn" id="revgo">${t('c.rewrite')}</button></div></div>` : need;
+    if (ui.tab === 'design') {
+      const vno = (id) => versions.find((x) => x.id === id)?.version_no;
+      pane.innerHTML = out ? `<div class="card stack">
+        <div><b>Design a page from copy v${v.version_no}</b><div class="xs muted">The AI lays out your approved copy word for word with your brand colors and fonts. Photos and proof stay as placeholders for you to fill. Goes to Approvals.</div></div>
+        <div class="grid g2"><div class="field"><label>Style</label><select class="select" id="dstyle">${[['brand', 'My brand colors'], ['dark', 'Dark'], ['light', 'Light']].map(([k, l]) => `<option value="${k}" ${k === ui.style ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+        <div class="field"><label>${t('c.language')}</label><select class="select" id="dlang"><option value="en">English</option><option value="fr-qc" ${f.brief?.language === 'Quebec French' ? 'selected' : ''}>Quebec French</option></select></div></div>
+        <div class="field"><label>Design notes (optional)</label><input class="input" id="dnote" placeholder="Example: photo of me next to the headline, keep it minimal"></div>
+        ${f.order_form_url ? '' : '<div class="xs" style="color:var(--warn)">No order form URL on the Brief tab yet. Buttons will link nowhere until you add it.</div>'}
+        <div class="row"><button class="btn btn-primary" id="dbuild">${icon('sparkle')} Design page</button></div></div>
+        <div class="list" style="margin-top:14px">${pages.map((pg) => `<div class="list-item wrap"><b>Page v${pg.version_no}</b><div class="grow xs muted">copy v${vno(pg.funnel_version_id) ?? '?'} · ${esc(pg.style)} · ${new Date(pg.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+          <span class="chip ${pg.status === 'approved' ? 'ok' : 'warn'}">${pg.status === 'approved' ? 'approved' : 'in Approvals'}</span>
+          <button class="btn btn-sm" data-pv="${pg.id}">${icon('ext')} ${t('c.preview')}</button>
+          <button class="btn btn-sm" data-hlc="${pg.id}" title="Paste into a Custom Code element in your HighLevel funnel step">Copy for HighLevel</button>
+          <button class="btn btn-sm" data-dl="${pg.id}">Download HTML</button>
+          <label class="xs row" style="gap:6px"><input type="checkbox" data-share="${pg.id}" ${pg.shared ? 'checked' : ''}> Preview link on</label>
+          ${pg.shared ? `<button class="btn btn-sm btn-ghost" data-link="${esc(pg.public_token)}">Copy link</button>` : ''}
+          <button class="btn btn-sm btn-ghost" data-pdel="${pg.id}">${icon('trash')}</button></div>`).join('') || '<div class="empty small">No designed pages yet</div>'}</div>
+        <p class="xs muted" style="margin-top:8px">The preview link works for anyone who has it, is hidden from search engines, and can be turned off any time. To go live, paste "Copy for HighLevel" into a Custom Code element on your HighLevel funnel step.</p>` : need;
+      const html = async (id) => (await q(live.sb.from('funnel_pages').select('html').eq('id', id)))[0]?.html || '';
+      const b = $('#dbuild', pane); if (b) b.onclick = async () => { ui.style = $('#dstyle', pane).value; b.disabled = true; b.textContent = 'Designing... about 20 seconds';
+        try { const r = await api('studio', { body: { action: 'page_build', funnel_id: f.id, version_id: v.id, style: ui.style, language: $('#dlang', pane).value, instruction: $('#dnote', pane).value.trim() } }); ctx.refreshNav(); toast(`Page v${r.version_no} is in Approvals.`); refresh(); }
+        catch (e) { toast(e.message, { ms: 7000 }); b.disabled = false; b.textContent = 'Design page'; } };
+      pane.querySelectorAll('[data-pv]').forEach((x) => x.onclick = async () => preview(await html(x.dataset.pv)));
+      pane.querySelectorAll('[data-hlc]').forEach((x) => x.onclick = async () => { try { await navigator.clipboard.writeText(forHighLevel(await html(x.dataset.hlc))); toast('Copied. In HighLevel, add a Custom Code element to the funnel step and paste.', { ms: 7000 }); } catch (e) { toast('Could not copy: ' + e.message); } });
+      pane.querySelectorAll('[data-dl]').forEach((x) => x.onclick = async () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([await html(x.dataset.dl)], { type: 'text/html' })); a.download = `${f.name.replace(/[^\w-]+/g, '-')}-page.html`; a.click(); });
+      pane.querySelectorAll('[data-link]').forEach((x) => x.onclick = async () => { try { await navigator.clipboard.writeText(pageUrl(x.dataset.link)); toast('Preview link copied'); } catch { toast(pageUrl(x.dataset.link), { ms: 10000 }); } });
+      pane.querySelectorAll('[data-share]').forEach((x) => x.onchange = async () => { try { await q(live.sb.from('funnel_pages').update({ shared: x.checked }).eq('id', x.dataset.share)); toast(x.checked ? 'Preview link on' : 'Preview link off'); refresh(); } catch (e) { toast(e.message); } });
+      pane.querySelectorAll('[data-pdel]').forEach((x) => x.onclick = () => modal({ title: 'Delete page', body: '<p class="small">Deletes this designed page and turns off its preview link. Your funnel copy stays.</p>', foot: `<button class="btn" data-close>${t('c.cancel')}</button><button class="btn btn-danger solid" data-ok>Delete</button>`,
+        onMount: (ov, close) => { ov.querySelector('[data-ok]').onclick = async () => { await q(live.sb.from('funnel_pages').delete().eq('id', x.dataset.pdel)).catch((e) => toast(e.message)); close(); refresh(); }; } }));
+    }
     if (ui.tab === 'images') pane.innerHTML = out ? `<div class="stack">${out.image_prompts.map((p, i) => `<div class="card"><div class="row between"><b>${['Hero image', 'Section image', 'Ad thumbnail'][i] || 'Image'}</b><a class="btn btn-sm" href="#graphics" data-imgp="${i}">${icon('image')} Make in Graphics</a></div><p class="small" style="margin-top:6px">${esc(p)}</p></div>`).join('')}</div>` : need;
     if (ui.tab === 'emails') pane.innerHTML = out ? `<div class="stack">${out.emails.map((m, i) => `<div class="card"><div class="row"><span class="chip">${i + 1}</span><b>${esc(m.subject)}</b></div><div class="xs muted" style="margin:4px 0 8px">${esc(m.preview)}</div><div class="preview-box small">${esc(m.body)}</div></div>`).join('')}</div>` : need;
     if (ui.tab === 'notes') pane.innerHTML = out ? `<div class="card small stack">${out.hl_setup_notes.map((n, i) => `<p><b>${i + 1}.</b> ${esc(n)}</p>`).join('')}</div>` : need;

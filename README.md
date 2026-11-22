@@ -14,6 +14,7 @@ A private, single-owner AI command center on top of HighLevel. HighLevel is the 
 | 6 | MCP server with revocable tokens and undo, recurring routines | **Done** (run migration 005, set `CRON_SECRET`) |
 | 8 | My feed (4 platforms), content funnel, voice playbook, model picker, Apify cost tracking | **Done** (run migration 008) |
 | 9 | Calls (Google Meet, upload, paste) with AI review, Revenue (Stripe + logged), Google Calendar in Jarvis | **Done** (run migration 009, Google and Stripe setup) |
+| 10 | Designed funnel pages (preview link, Copy for HighLevel, HTML download), program slides (PowerPoint and PDF) | **Done** (run migration 010) |
 | 7 | Security headers (CSP, HSTS), error log, API tests for every feature, domain steps, cut list | **Done** (run migration 006, add the domain: `docs/SETUP.md`) |
 
 ## Live vs demo

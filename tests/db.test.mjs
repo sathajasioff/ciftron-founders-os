@@ -225,3 +225,22 @@ test('calls and revenue_entries: workspace-scoped with checked values; calls nee
   await assert.rejects(as(A, `insert into revenue_entries (amount, currency) values (10, 'usd')`), /check/);
   assert.equal((await as(B, 'select * from revenue_entries')).rows.length, 0);
 });
+
+test('funnel_pages and program_decks: workspace-scoped, tokens unique and long, decks need the current version', async () => {
+  const { rows: [f] } = await as(A, `insert into funnels (name, funnel_type) values ('Review call', 'Sales funnel') returning id`);
+  const { rows: [pg] } = await as(A, `insert into funnel_pages (funnel_id, version_no, html, public_token) values ($1, 1, '<html></html>', 'tok_abcdefghijklmnop') returning owner_id, shared, status`, [f.id]);
+  assert.deepEqual([pg.owner_id, pg.shared, pg.status], [A, true, 'draft']);
+  await assert.rejects(as(A, `insert into funnel_pages (funnel_id, version_no, html, public_token) values ($1, 2, 'x', 'short')`, [f.id]), /check/);
+  await assert.rejects(as(A, `insert into funnel_pages (funnel_id, version_no, html, public_token) values ($1, 2, 'x', 'tok_abcdefghijklmnop')`, [f.id]), /duplicate|unique/);
+  await assert.rejects(as(A, `insert into funnel_pages (funnel_id, version_no, html, public_token) values ($1, 1, 'x', 'tok_zzzzzzzzzzzzzzzz')`, [f.id]), /duplicate|unique/);
+  await assert.rejects(as(A, `insert into funnel_pages (funnel_id, version_no, html, public_token, status) values ($1, 3, 'x', 'tok_yyyyyyyyyyyyyyyy', 'live')`, [f.id]), /check/);
+  assert.equal((await as(B, 'select * from funnel_pages')).rows.length, 0);
+  const { rows: [p] } = await as(A, `insert into programs (name) values ('Lead Speed') returning id`);
+  const { rows: [d] } = await as(A, `insert into program_decks (program_id, title, slides) values ($1, 'Deck', '[{"layout":"title","title":"A"}]') returning id, version, status`, [p.id]);
+  assert.deepEqual([d.version, d.status], [1, 'draft']);
+  await assert.rejects(as(A, `update program_decks set status = 'approved', version = 1 where id = $1`, [d.id]), /version_conflict/);
+  await as(A, `update program_decks set status = 'approved', version = 2 where id = $1`, [d.id]);
+  assert.equal((await as(B, 'select * from program_decks')).rows.length, 0);
+  await as(A, `delete from programs where id = $1`, [p.id]);
+  assert.equal((await as(A, 'select * from program_decks')).rows.length, 0, 'decks go with their program');
+});

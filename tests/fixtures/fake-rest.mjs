@@ -185,15 +185,15 @@ export function installFakeSupabase({ seed = {}, external } = {}) {
 }
 
 // Calls a Vercel-style handler and returns { status, body, headers }.
-export async function invoke(fn, { method = 'POST', body, token = USER_TOKEN, headers = {}, url = '/api/x' } = {}) {
+export async function invoke(fn, { method = 'POST', body, token = USER_TOKEN, headers = {}, url = '/api/x', query } = {}) {
   const res = {
     statusCode: 200, body: undefined, headers: {}, headersSent: false,
     setHeader(k, v) { this.headers[k.toLowerCase()] = v; },
     status(c) { this.statusCode = c; return this; },
     json(b) { this.body = b; this.headersSent = true; return this; },
-    send(b) { this.body = typeof b === 'string' ? JSON.parse(b) : b; this.headersSent = true; return this; },
+    send(b) { try { this.body = typeof b === 'string' ? JSON.parse(b) : b; } catch { this.body = b; } this.headersSent = true; return this; },
     end() { this.headersSent = true; return this; },
   };
-  await fn({ method, url, body, headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...headers } }, res);
+  await fn({ method, url, body, ...(query ? { query } : {}), headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...headers } }, res);
   return { status: res.statusCode, body: res.body, headers: res.headers };
 }
