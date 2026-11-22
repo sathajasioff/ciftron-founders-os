@@ -7,9 +7,11 @@ const NAV = [
   ['nav.create', [['content', 'play'], ['funnels', 'funnel'], ['emails', 'mail'], ['graphics', 'image'], ['programs', 'book']]],
   ['nav.knowledge', [['brain', 'brain'], ['vault', 'vault']]],
   ['nav.crm', [['pipeline', 'kanban'], ['goals', 'target']]],
-  ['nav.system', [['settings', 'plug']]],
+  ['nav.system', [['connections', 'plug']]],
 ];
-const ROUTES = ['home', 'chat', 'team', 'approvals', 'content', 'funnels', 'emails', 'graphics', 'programs', 'brain', 'vault', 'pipeline', 'goals', 'settings'];
+const ROUTES = ['home', 'chat', 'team', 'approvals', 'content', 'funnels', 'emails', 'graphics', 'programs', 'brain', 'vault', 'pipeline', 'goals', 'connections'];
+const FILE = { connections: 'settings' };
+const LABEL = { connections: 'settings' };
 
 export const pendingCount = () => approvals.filter((a) => a.status === 'pending').length;
 
@@ -41,7 +43,7 @@ function shell() {
   $('#theme-btn').onclick = () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
   $('#lang-seg').onclick = (e) => { const b = e.target.closest('[data-lang]'); if (b) { setLang(b.dataset.lang); route(); } };
   $('#global-search').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && e.target.value.trim()) location.hash = '#/chat?q=' + encodeURIComponent(e.target.value.trim());
+    if (e.key === 'Enter' && e.target.value.trim()) location.hash = '#chat?q=' + encodeURIComponent(e.target.value.trim());
   });
 }
 
@@ -53,9 +55,9 @@ export function setTheme(th) {
 }
 
 export function paintChrome(current) {
-  current = current || (location.hash.replace('#/', '').split('?')[0] || 'home');
+  current = current || (location.hash.replace(/^#\/?/, '').split('?')[0] || 'home');
   $('#nav').innerHTML = NAV.map(([g, items]) => `<div class="nav-group">${t(g)}</div>` + items.map(([k, ic]) =>
-    `<a class="nav-link ${k === current ? 'active' : ''}" href="#/${k}" ${k === current ? 'aria-current="page"' : ''}>${icon(ic)}<span>${t('nav.' + k)}</span>${k === 'approvals' && pendingCount() ? `<span class="count">${pendingCount()}</span>` : ''}</a>`).join('')).join('');
+    `<a class="nav-link ${k === current ? 'active' : ''}" href="#${k}" ${k === current ? 'aria-current="page"' : ''}>${icon(ic)}<span>${t('nav.' + (LABEL[k] || k))}</span>${k === 'approvals' && pendingCount() ? `<span class="count">${pendingCount()}</span>` : ''}</a>`).join('')).join('');
   const dark = document.documentElement.dataset.theme === 'dark';
   $('#theme-btn').innerHTML = icon(dark ? 'sun' : 'moon');
   $('#global-search').placeholder = t('top.search');
@@ -65,13 +67,13 @@ export function paintChrome(current) {
 
 const cache = {};
 async function route() {
-  const [path, qs] = location.hash.replace('#/', '').split('?');
+  const [path, qs] = location.hash.replace(/^#\/?/, '').split('?');
   const name = ROUTES.includes(path) ? path : 'home';
   paintChrome(name);
   $('#shell').classList.remove('nav-open');
   const view = $('#view');
   try {
-    const mod = cache[name] || (cache[name] = await import(`./screens/${name}.js`));
+    const mod = cache[name] || (cache[name] = await import(`./screens/${FILE[name] || name}.js`));
     view.innerHTML = '';
     mod.render(view, { params: new URLSearchParams(qs || ''), refreshNav: () => paintChrome(name) });
   } catch (err) {
@@ -80,7 +82,7 @@ async function route() {
   }
   view.focus({ preventScroll: true });
   window.scrollTo(0, 0);
-  document.title = `${t('nav.' + name)} · Founders AI OS`;
+  document.title = `${t('nav.' + (LABEL[name] || name))} · Founders AI OS`;
 }
 
 setLang(getLang());

@@ -2,7 +2,7 @@
 import sys, subprocess, time, os
 from playwright.sync_api import sync_playwright
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ROUTES = ['home','chat','team','approvals','content','funnels','emails','graphics','programs','brain','vault','pipeline','goals','settings']
+ROUTES = ['home','chat','team','approvals','content','funnels','emails','graphics','programs','brain','vault','pipeline','goals','connections']
 shots = os.environ.get('SHOTS')
 srv = subprocess.Popen([sys.executable, '-m', 'http.server', '8765'], cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 time.sleep(1)
@@ -18,7 +18,7 @@ try:
                 pg.on('console', lambda m: m.type == 'error' and 'fonts.g' not in m.text and errors.append(f'{theme} {vp} console: {m.text}'))
                 pg.on('pageerror', lambda e: errors.append(f'{theme} {vp} pageerror: {e}'))
                 for r in ROUTES:
-                    pg.goto(f'http://localhost:8765/#/{r}')
+                    pg.goto(f'http://localhost:8765/#{r}')
                     pg.wait_for_selector('#view h1', timeout=5000)
                     if pg.query_selector('#view .empty h2'):
                         errors.append(f'{theme} {vp} {r}: screen failed to render')
@@ -30,16 +30,18 @@ try:
         # Interaction checks
         ctx = b.new_context(viewport={'width': 1440, 'height': 900}); pg = ctx.new_page()
         pg.on('pageerror', lambda e: errors.append(f'interaction pageerror: {e}'))
-        pg.goto('http://localhost:8765/#/approvals'); pg.wait_for_selector('[data-act=approve]')
+        pg.goto('http://localhost:8765/#approvals'); pg.wait_for_selector('[data-act=approve]')
         before = pg.locator('[data-act=approve]').count(); pg.locator('[data-act=approve]').first.click()
         assert pg.locator('[data-act=approve]').count() == before - 1, 'approve did not remove item'
-        pg.goto('http://localhost:8765/#/pipeline'); pg.wait_for_selector('[data-op]'); pg.locator('[data-op]').first.click()
+        pg.goto('http://localhost:8765/#pipeline'); pg.wait_for_selector('[data-op]'); pg.locator('[data-op]').first.click()
         pg.locator('#fwd').click(); pg.wait_for_selector('[data-ok]'); assert 'Confirm' in pg.locator('[data-ok]').inner_text()
         pg.locator('[data-ok]').click(); pg.wait_for_selector('.toast')
-        pg.goto('http://localhost:8765/#/chat'); pg.fill('#prompt', 'test'); pg.click('#send'); pg.wait_for_selector('text=Demo reply')
+        pg.goto('http://localhost:8765/#chat'); pg.fill('#prompt', 'test'); pg.click('#send'); pg.wait_for_selector('text=Demo reply')
         pg.click('label:has(#room-toggle) span'); pg.wait_for_selector('text=Verdict')
-        pg.goto('http://localhost:8765/#/settings'); pg.fill('#del', 'delete'); assert pg.locator('#delbtn').is_enabled()
-        pg.goto('http://localhost:8765/#/goals'); pg.fill('#graw', 'Book 20 appointments'); pg.click('#gadd'); pg.wait_for_selector('text=20 opportunities')
+        pg.goto('http://localhost:8765/#connections'); pg.fill('#del', 'delete'); assert pg.locator('#delbtn').is_enabled()
+        pg.goto('http://localhost:8765/#goals'); pg.fill('#graw', 'Book 20 appointments'); pg.click('#gadd'); pg.wait_for_selector('text=20 opportunities')
+        pg.goto('http://localhost:8765/#funnels'); pg.click('#prev'); pg.wait_for_selector('#pvf')
+        pg.locator('[data-close]').last.click()
         pg.locator('.seg [data-lang=fr]').click(); pg.wait_for_selector('text=Objectifs')
         b.close()
 finally:

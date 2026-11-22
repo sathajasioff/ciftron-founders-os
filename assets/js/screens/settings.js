@@ -29,7 +29,7 @@ export function render(el) {
           <div class="row between"><span class="small">${t('c.language')}</span><div class="seg" id="lg"><button data-l="en" class="${getLang() === 'en' ? 'active' : ''}">English</button><button data-l="fr" class="${getLang() === 'fr' ? 'active' : ''}">Français (QC)</button></div></div>
         </div>
         <div class="card stack"><h3>${t('set.export')}</h3><p class="small muted">Download everything the OS stores as JSON: Brain, facts, content, approvals and logs. API keys are never included.</p>
-          <div><button class="btn" id="exp">${icon('download')} Export JSON</button></div></div>
+          <div class="row"><button class="btn" id="exp">${icon('download')} Export JSON</button><button class="btn btn-ghost" id="expc">${t('c.copy')} JSON</button></div></div>
         <div class="card"><div class="card-head"><h3>${t('set.log')}</h3><span class="xs muted">Every write is logged</span></div>
           <div class="table-wrap" style="border:0"><table class="table"><thead><tr><th>When</th><th>Action</th><th>Target</th><th>Status</th></tr></thead><tbody>
           ${writeLog.map((w) => `<tr><td class="small muted" style="white-space:nowrap">${esc(w.when)}</td><td class="small">${esc(w.action)}</td><td class="small">${esc(w.target)}</td><td><span class="chip ${w.status === 'Sent' ? 'ok' : ''}">${esc(w.status)}</span></td></tr>`).join('')}</tbody></table></div></div>
@@ -49,11 +49,12 @@ export function render(el) {
       setTimeout(() => { toast(c.connected ? `${c.name}: connection OK (demo)` : `${c.name}: no key saved yet`); draw(); }, 700); });
     el.querySelectorAll('[data-conn]').forEach((b) => b.onclick = () => connect(connections.find((x) => x.id === b.dataset.conn)));
     el.querySelectorAll('[data-th]').forEach((b) => b.onclick = () => { setTheme(b.dataset.th); draw(); });
-    el.querySelectorAll('[data-l]').forEach((b) => b.onclick = () => { setLang(b.dataset.l); paintChrome('settings'); draw(); });
+    el.querySelectorAll('[data-l]').forEach((b) => b.onclick = () => { setLang(b.dataset.l); paintChrome('connections'); draw(); });
     $('#exp', el).onclick = () => {
       const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), note: 'Phase 1 demo export. No API keys.', facts: data.facts, approvals: data.approvals, content: data.contentItems, goals: data.goals, writeLog: data.writeLog }, null, 2)], { type: 'application/json' });
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'founders-os-export.json'; a.click();
     };
+    $('#expc', el).onclick = async () => { try { await navigator.clipboard.writeText(JSON.stringify({ facts: data.facts, approvals: data.approvals, content: data.contentItems, goals: data.goals }, null, 2)); toast('Copied'); } catch (_) { toast('Copy blocked by the browser'); } };
     const del = $('#del', el), delbtn = $('#delbtn', el);
     del.oninput = () => { delbtn.disabled = del.value.trim() !== 'delete'; };
     delbtn.onclick = () => { del.value = ''; delbtn.disabled = true; toast('Demo mode: nothing was deleted'); };

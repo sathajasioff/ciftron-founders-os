@@ -1,5 +1,5 @@
 import { t } from '../i18n.js';
-import { head, icon, esc, toast, tabsHtml, confirmWrite, marks, $ } from '../ui.js';
+import { head, icon, esc, toast, tabsHtml, confirmWrite, marks, modal, $ } from '../ui.js';
 import { funnels, offers } from '../data.js';
 
 let sel = 'f1';
@@ -20,7 +20,7 @@ export function render(el) {
     const f = funnels.find((x) => x.id === sel);
     const o = offers.find((x) => x.id === f.offer);
     el.innerHTML = `
-      ${head(t('funnels.title'), t('funnels.sub'), `<a class="btn btn-primary" href="#/chat?q=${encodeURIComponent('Start a new funnel brief')}">${icon('plus')} Start from AI Chat</a>`)}
+      ${head(t('funnels.title'), t('funnels.sub'), `<a class="btn btn-primary" href="#chat?q=${encodeURIComponent('Start a new funnel brief')}">${icon('plus')} Start from AI Chat</a>`)}
       <div class="split-l">
         <div class="list">${funnels.map((x) => `<div class="list-item clickable ${x.id === sel ? 'selected' : ''}" data-f="${x.id}"><div class="grow"><div style="font-weight:600" class="small">${esc(x.name)}</div><div class="xs muted">${esc(x.type)} · v${x.version}</div></div>${x.status.includes('Sent') ? '<span class="chip ok">Sent</span>' : '<span class="chip">Draft</span>'}</div>`).join('')}</div>
         <div>
@@ -71,6 +71,9 @@ function preview(p, url) {
   .ph{background:rgba(246,173,85,.2);color:#f6ad55;padding:2px 6px;border-radius:4px}.k{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#C8F36B}</style></head>
   <body><main><div class="k">01 / Review call</div><h1>${esc(p.headline)}</h1><p>${esc(p.sub)}</p><ul>${p.bullets.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>
   <p><span class="ph">${esc(p.proof)}</span></p><a class="cta" href="${esc(url || '#')}">${esc(p.cta)} ↗</a></main></body></html>`;
-  const w = window.open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank');
-  if (!w) toast('Allow pop-ups to open the preview');
+  const blobUrl = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+  modal({ title: 'Page preview', wide: true, body: `<div class="seg" id="pvw" style="margin-bottom:10px"><button class="active" data-w="100%">Desktop</button><button data-w="390px">Mobile</button></div>
+    <div style="display:grid;place-items:center;background:var(--surface-2);border-radius:12px;padding:10px"><iframe id="pvf" title="Preview" sandbox="" style="width:100%;height:60vh;border:0;border-radius:8px;background:#111"></iframe></div>`,
+    foot: `<a class="btn" href="${blobUrl}" target="_blank" rel="noopener">${icon('ext')} Open in new tab</a><button class="btn btn-primary" data-close>${t('c.close')}</button>`,
+    onMount: (ov) => { ov.querySelector('#pvf').srcdoc = html; ov.querySelectorAll('[data-w]').forEach((b) => b.onclick = () => { ov.querySelector('#pvf').style.width = b.dataset.w; ov.querySelectorAll('[data-w]').forEach((x) => x.classList.toggle('active', x === b)); }); } });
 }
