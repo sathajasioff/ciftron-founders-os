@@ -3,7 +3,7 @@
 // and nothing publishes, posts or sends. Write tools are logged with the previous value.
 import { getSecret, embed } from './providers.js';
 import { DRAFT_TYPES, TARGETS, cleanCopy } from './chat.js';
-import { businessContext, metaNow } from './context.js';
+import { businessContext, metaNow, revenueNow } from './context.js';
 
 const uuid = { type: 'string', format: 'uuid' };
 const version = { type: 'integer', minimum: 1, description: 'The version you read. The edit fails if the row changed since.' };
@@ -88,6 +88,23 @@ export function buildTools({ admin, ownerId, token }) {
       description: 'Questions the audience asks, answered the way the owner answers them. Match these positions and this voice.',
       inputSchema: obj({ status: { type: 'string', enum: ['proposed', 'approved', 'rejected'] } }),
       run: async ({ status = 'approved' }) => ({ pairs: await one(sel('voice_playbook', 'id, question, answer, status, authored_by, version').eq('status', status).order('updated_at', { ascending: false }).limit(100)) }),
+    },
+    {
+      name: 'list_calls', title: 'Calls', annotations: READ,
+      description: 'Recorded sales and coaching calls with their AI review (summary, questions, objections, next steps). Pass id to also get the transcript.',
+      inputSchema: obj({ id: uuid, kind: { type: 'string', enum: ['sales', 'coaching', 'team', 'other'] }, limit: { type: 'integer', minimum: 1, maximum: 50 } }),
+      run: async ({ id, kind, limit = 15 }) => {
+        let q = sel('calls', `id, title, kind, occurred_at, duration_min, speakers, status, analysis${id ? ', transcript' : ''}`).order('occurred_at', { ascending: false }).limit(id ? 1 : limit);
+        if (id) q = q.eq('id', id);
+        if (kind) q = q.eq('kind', kind);
+        return { calls: (await one(q)).map((c) => ({ ...c, transcript: c.transcript ? clip(c.transcript, 60000) : undefined })) };
+      },
+    },
+    {
+      name: 'get_revenue', title: 'Revenue', annotations: READ,
+      description: 'Revenue by month for six months, this month vs last, and monthly recurring revenue, from Stripe and logged payments. No customer details.',
+      inputSchema: obj(),
+      run: async () => { const r = await revenueNow(ownerDb(admin, ownerId), admin, ownerId); return { summary: r.summary, stripe_connected: r.stripe }; },
     },
     {
       name: 'list_offers', title: 'Offers', annotations: READ,

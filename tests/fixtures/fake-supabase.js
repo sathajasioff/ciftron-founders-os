@@ -1,6 +1,6 @@
 // Minimal in-browser stand-in for @supabase/supabase-js, used only by tests/live_e2e.py.
 // Supports the query shapes the app uses and mimics the version_conflict trigger.
-const VERSIONED = ['offers', 'brain_facts', 'approvals', 'agents', 'content_items', 'email_sequences', 'funnels', 'programs', 'goals', 'voice_playbook'];
+const VERSIONED = ['calls', 'offers', 'brain_facts', 'approvals', 'agents', 'content_items', 'email_sequences', 'funnels', 'programs', 'goals', 'voice_playbook'];
 const now = () => new Date().toISOString();
 const uid = () => crypto.randomUUID();
 const OWNER = '11111111-1111-1111-1111-111111111111';
@@ -46,6 +46,9 @@ const db = (window.__FAKE_DB__ ||= {
   vault_items: [{ id: 'v1', owner_id: OWNER, kind: 'url', title: 'Clean pricing page', url: 'https://example.com', note: 'Layout', created_at: old }],
   goals: [], goal_items: [],
   agent_routines: [],
+  calls: [{ id: 'cl1', owner_id: OWNER, title: 'Broker discovery', kind: 'sales', source: 'google_meet', occurred_at: '2026-11-20T15:00:00Z', duration_min: 32, speakers: ['Marc', 'Jasinthan'], transcript: 'Marc: What does it cost?\nJasinthan: 497 a month.', status: 'analyzed', version: 2, created_at: old,
+    analysis: { summary: 'Pricing-focused discovery call.', outcome: 'Proposal by Friday', questions_asked: ['What does it cost?'], objections: [{ objection: 'Price', how_handled: 'Stated the price', better_response: 'Tie it to lost leads first' }], went_well: ['Clear offer'], improve: ['Ask about budget earlier'], next_steps: ['Send proposal Friday'], faq_candidates: [{ question: 'What does it cost?', answer: '497 a month.' }] } }],
+  revenue_entries: [],
   workspace_members: [],
   error_log: [{ id: 3, owner_id: OWNER, source: 'server', route: '/api/studio', status: 500, message: 'OpenRouter timed out', detail: { action: 'graphic' }, created_at: '2026-11-21T12:00:00Z' }],
   mcp_tokens: [{ id: 'mt1', owner_id: OWNER, name: 'Claude Code laptop', scope: 'read_write', token_prefix: 'cfos_AbCdEfG', last_used_at: '2026-11-21T10:00:00Z', revoked_at: null, created_at: old }],

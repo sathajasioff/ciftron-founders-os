@@ -14,6 +14,8 @@ export const PROVIDERS = {
   elevenlabs: { name: 'ElevenLabs', secret: ['api_key'], plain: ['voice_id'] },
   apify: { name: 'Apify', secret: ['api_token'], plain: [] },
   youtube: { name: 'YouTube', secret: ['api_key'], plain: [] },
+  google: { name: 'Google (Calendar and Meet)', secret: ['client_secret'], plain: ['client_id'] },
+  stripe: { name: 'Stripe', secret: ['api_key'], plain: [] },
   mcp: { name: 'Custom MCP server', secret: ['token'], plain: ['server_url'], phase: 6 },
 };
 
@@ -46,6 +48,17 @@ export async function testProvider(provider, s, config = {}) {
     case 'openrouter': return check('https://openrouter.ai/api/v1/key', { headers: { Authorization: `Bearer ${s.api_key}` } }, 'Key works');
     case 'elevenlabs': return check('https://api.elevenlabs.io/v1/user', { headers: { 'xi-api-key': s.api_key } }, 'Key works');
     case 'apify': return check('https://api.apify.com/v2/users/me', { headers: { Authorization: `Bearer ${s.api_token}` } }, 'Token works');
+    case 'stripe': return check('https://api.stripe.com/v1/balance', { headers: { Authorization: `Bearer ${s.api_key}` } }, 'Key works (read access to balance)');
+    case 'google': {
+      if (!config.client_id) return { ok: false, message: 'Add the Google client ID too.' };
+      if (!s.refresh_token) return { ok: false, deferred: true, message: 'Saved. Now click Sign in with Google.' };
+      try {
+        const { refreshAccess, calendarEvents } = await import('./google.js');
+        const token = await refreshAccess({ clientId: config.client_id, clientSecret: s.client_secret, refreshToken: s.refresh_token });
+        const ev = await calendarEvents(token, { days: 1 });
+        return { ok: true, message: `Signed in. Calendar works (${ev.length} event${ev.length === 1 ? '' : 's'} today).` };
+      } catch (e) { return { ok: false, message: e.message }; }
+    }
     case 'youtube': return check(`https://www.googleapis.com/youtube/v3/i18nLanguages?part=snippet&hl=en&key=${encodeURIComponent(s.api_key)}`, {}, 'Key works');
     default: return { ok: false, message: `Saved. The live test for ${PROVIDERS[provider].name} is added in Phase ${PROVIDERS[provider].phase}.`, deferred: true };
   }

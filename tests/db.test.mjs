@@ -211,3 +211,17 @@ test('voice_playbook and apify_runs: workspace-scoped, and playbook edits need t
   assert.equal((await as(B, 'select * from apify_runs')).rows.length, 0);
   await assert.rejects(as(A, `insert into content_items (title, format, funnel_stage) values ('x', 'Idea', 'nope')`), /check/);
 });
+
+test('calls and revenue_entries: workspace-scoped with checked values; calls need the current version', async () => {
+  const { rows: [c] } = await as(A, `insert into calls (title, source, transcript) values ('Discovery', 'paste', 'Marc: hi') returning id, owner_id, version, kind, status`);
+  assert.deepEqual([c.owner_id, c.version, c.kind, c.status], [A, 1, 'sales', 'new']);
+  await assert.rejects(as(A, `insert into calls (title, source, transcript) values ('x', 'zoom', 't')`), /check/);
+  await assert.rejects(as(A, `update calls set status = 'analyzed', version = 1 where id = $1`, [c.id]), /version_conflict/);
+  await as(A, `insert into calls (title, source, transcript, external_id) values ('Meet', 'google_meet', 't', 'conferenceRecords/r/transcripts/t')`);
+  await assert.rejects(as(A, `insert into calls (title, source, transcript, external_id) values ('Meet again', 'google_meet', 't', 'conferenceRecords/r/transcripts/t')`), /duplicate|unique/);
+  assert.equal((await as(B, 'select * from calls')).rows.length, 0);
+  await as(A, `insert into revenue_entries (amount, currency, client, recurring) values (1500, 'CAD', 'Batisseur', true)`);
+  await assert.rejects(as(A, `insert into revenue_entries (amount, currency) values (0, 'USD')`), /check/);
+  await assert.rejects(as(A, `insert into revenue_entries (amount, currency) values (10, 'usd')`), /check/);
+  assert.equal((await as(B, 'select * from revenue_entries')).rows.length, 0);
+});

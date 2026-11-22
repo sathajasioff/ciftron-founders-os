@@ -2,7 +2,7 @@
 import sys, subprocess, time, os
 from playwright.sync_api import sync_playwright
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ROUTES = ['home','chat','team','approvals','content','funnels','emails','graphics','programs','brain','vault','pipeline','goals','connections']
+ROUTES = ['home','chat','team','approvals','content','funnels','emails','graphics','programs','brain','vault','pipeline','revenue','calls','goals','connections']
 shots = os.environ.get('SHOTS')
 srv = subprocess.Popen([sys.executable, '-I', os.path.join(ROOT, 'tests', 'serve.py'), '8765'], cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 time.sleep(1)

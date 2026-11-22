@@ -18,9 +18,9 @@ export default handler(['GET', 'POST', 'DELETE'], async (req, body) => {
         const conn = (conns || []).find((c) => c.provider === id);
         const connected = p.secret.every((f) => ks.some((k) => k.field === f));
         return {
-          id, name: p.name, connected, phase: p.phase || null,
+          id, name: p.name, connected, phase: p.phase || null, ...(id === 'google' ? { linked: ks.some((k) => k.field === 'refresh_token') } : {}),
           status: ks.some((k) => k.status === 'error') ? 'error' : ks.every((k) => k.status === 'ok') && ks.length ? 'ok' : connected ? 'untested' : 'none',
-          last4: ks.map((k) => k.last4).filter(Boolean)[0] || null,
+          last4: ks.filter((k) => k.field !== 'refresh_token').map((k) => k.last4).filter(Boolean)[0] || null,
           test_message: ks[0]?.test_message || null,
           last_tested_at: ks[0]?.last_tested_at || null,
           fields: { secret: p.secret, plain: p.plain },
@@ -43,6 +43,7 @@ export default handler(['GET', 'POST', 'DELETE'], async (req, body) => {
   if (body.action === 'test') {
     const secrets = {};
     for (const f of p.secret) secrets[f] = await getSecret(admin, user.id, body.provider, f);
+    if (body.provider === 'google') { try { secrets.refresh_token = await getSecret(admin, user.id, 'google', 'refresh_token'); } catch { /* not signed in yet */ } }
     const { data: conn } = await db.from('connections').select('config').eq('provider', body.provider).maybeSingle();
     const r = await testProvider(body.provider, secrets, conn?.config || {});
     const status = r.deferred ? 'untested' : r.ok ? 'ok' : 'error';

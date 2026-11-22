@@ -345,3 +345,59 @@ Every Apify run records its cost. The Research tab shows the last 30 days: spend
 - The choice is remembered, and each reply shows which model wrote it.
 - Images in a chat are only read by Claude.
 - The Strategy Room always uses Claude and GPT.
+
+# Phase 9 update (calls, revenue, calendar)
+
+1. **Required:** in Supabase SQL Editor, run `supabase/migrations/20261122000009_calls_revenue.sql`.
+2. The sidebar gains **Revenue** and **Calls** under CRM and Goals.
+
+## Google (Calendar in Jarvis, Meet transcripts in Calls)
+
+This uses your own Google Cloud project, so your calendar and calls never pass through anyone else's app.
+
+1. Go to **console.cloud.google.com** and create a project named "Founders OS".
+2. **APIs & Services → Library:** enable **Google Calendar API** and **Google Meet REST API**.
+3. **Google Auth Platform** (or **OAuth consent screen**):
+   - **Audience / User type: Internal** if you use Google Workspace (for example you@ciftron.com). Do this if you can: sign-in then never expires.
+   - On a personal Gmail account, choose **External**, keep it in **Testing**, and add your own email as a test user. Google ends test sign-ins after 7 days, so you'll click **Sign in with Google** again each week.
+   - **Data access → Add scopes:** `.../auth/calendar.events.readonly` and `.../auth/meetings.space.readonly`.
+4. **Clients → Create client → Web application:**
+   - Name: Founders OS
+   - **Authorized redirect URI:** `https://os.ciftron.com/api/google` (exactly; Settings shows it under the Google card)
+   - Copy the **Client ID** and **Client secret**.
+5. In the OS, go to **Connections and Settings → Google (Calendar and Meet) → Connect**, paste both and click **Save and test**.
+6. Click **Sign in with Google**, choose your account and allow both permissions. You come back to Settings with "Signed in with Google".
+
+**Meet transcripts:** your Google Workspace plan must include transcripts. Turn on transcription during a call (**Activities → Transcripts**), and import calls within 30 days, because Google deletes the API copy after that. The OS keeps its own copy once imported.
+
+**Read-only:** the OS only reads calendar titles and times (not attendee emails) and Meet transcripts. It never creates, edits or deletes anything in Google. **Sign out** in Settings removes the stored sign-in.
+
+## Calls
+
+- **Import from Google Meet:** lists calls from the last 30 days that have a transcript. Pick the kind (sales, coaching, team) and import.
+- **Upload:** TXT, VTT, SRT, PDF or DOCX transcripts, for example from Zoom, Otter or Fathom.
+- **Paste:** any transcript text. Lines like `Name: text` are read as speakers.
+- **Review with AI:** summary, outcome, the questions they asked, objections (how you handled each one and a better answer), what went well, what to improve, and next steps.
+- **Add to Brain:** the call becomes a Brain source, so its facts are proposed for your review.
+- **Add answers to Playbook:** answers you gave on the call go to Brain → Playbook as proposals.
+
+## Revenue
+
+- **Stripe:** in Stripe go to **Developers → API keys → Create restricted key**, name it "Founders OS" and set:
+  - **Charges: Read**
+  - **Subscriptions: Read**
+  - **Balance: Read** (used by the Test button)
+  - everything else: **None**
+
+  Paste the `rk_live_...` key in **Connections → Stripe**.
+- **Log payment** records payments outside Stripe (bank transfer, Interac, PayPal). Tick **Monthly retainer** for clients who pay every month; each retainer client counts once toward monthly recurring revenue.
+- The Revenue screen shows this month, last month, monthly recurring revenue and six months by month, per currency. Currencies are never converted.
+- Jarvis, Home and Claude Code (MCP `get_revenue`) see the same totals. No customer names or emails are read from Stripe.
+
+## Time zone
+
+**Connections and Settings → Appearance → Time zone** sets the zone for routines and calendar times. The default is America/Toronto.
+
+## Vercel note
+
+The OS now has 12 server functions, the maximum on Vercel's free Hobby plan. Future features will extend these existing functions rather than add new ones.

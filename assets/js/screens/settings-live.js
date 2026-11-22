@@ -22,18 +22,23 @@ const DESC = {
   elevenlabs: 'Voice for Jarvis. Voice ID is optional; a default voice is used if empty.',
   apify: 'Instagram research for Content (public posts only).',
   youtube: 'YouTube research for Content (public stats only).',
+  google: 'Your own Google Cloud OAuth client. Read-only: Calendar events in Jarvis and Meet transcripts in Calls.',
+  stripe: 'Restricted key with read access to charges and subscriptions. Revenue reads payments and MRR; nothing is changed.',
   mcp: 'Connect another MCP server.',
 };
-const FIELD_LABEL = { private_integration_token: 'Private Integration token', location_id: 'Location ID', access_token: 'System user access token', ad_account_id: 'Ad account ID (act_...)', api_key: 'API key', api_token: 'API token', voice_id: 'Voice ID', token: 'Token', server_url: 'Server URL' };
+const FIELD_LABEL = { private_integration_token: 'Private Integration token', location_id: 'Location ID', access_token: 'System user access token', ad_account_id: 'Ad account ID (act_...)', api_key: 'API key', api_token: 'API token', voice_id: 'Voice ID', token: 'Token', server_url: 'Server URL', client_id: 'OAuth client ID', client_secret: 'OAuth client secret' };
 const NEEDED_NOW = ['anthropic', 'openai'];
+const TZS = ['America/Toronto', 'America/Montreal', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Vancouver', 'Europe/London', 'Europe/Paris', 'Asia/Colombo', 'Asia/Dubai', 'Asia/Kolkata', 'Asia/Singapore', 'Australia/Sydney', 'UTC'];
 const ui = { q: '', filter: 'all' };
 
 export async function render(el) {
-  let providers = [], log = [];
+  let providers = [], log = [], tz = 'America/Toronto';
   let errorsCard = null, teamCard = null;
   const load = async () => {
     const [k, l] = await Promise.all([api('keys', { method: 'GET' }), q(live.sb.from('hl_write_log').select('created_at, action, target, status').order('created_at', { ascending: false }).limit(20))]);
     providers = k.providers; log = l;
+    try { tz = (await q(live.sb.from('profiles').select('timezone').maybeSingle()))?.timezone || tz; } catch { /* keep default */ }
+    if (!TZS.includes(tz)) TZS.unshift(tz);
   };
 
   const isOwner = live.role !== 'member';
@@ -54,6 +59,8 @@ export async function render(el) {
         <p class="small muted" style="margin-top:6px">${esc(DESC[c.id])}</p>
         ${c.connected ? `<div class="xs mono muted">${c.last4 ? 'Key ending ' + esc(c.last4) : 'Saved'}${Object.entries(c.config || {}).filter(([, v]) => v).map(([k, v]) => ` · ${esc(FIELD_LABEL[k] || k)}: ${esc(v)}`).join('')}</div>` : ''}
         ${c.test_message ? `<div class="xs ${c.status === 'error' ? 'down' : 'muted'}">${esc(c.test_message)}</div>` : ''}
+        ${c.id === 'google' && c.connected ? `<div class="row" style="margin-top:6px">${c.linked ? `<span class="chip ok">Signed in with Google</span>${isOwner ? '<button class="btn btn-sm btn-ghost" id="gout">Sign out</button>' : ''}` : isOwner ? `<button class="btn btn-sm btn-primary" id="gin">${icon('globe')} Sign in with Google</button>` : '<span class="xs muted">Owner must sign in with Google</span>'}</div>
+          ${!c.linked && isOwner ? `<div class="xs muted" style="margin-top:4px">Redirect URI to add in Google Cloud: <span class="mono">${esc(location.origin)}/api/google</span></div>` : ''}` : ''}
         <div class="row" style="margin-top:10px">${!isOwner ? '<span class="xs muted">Only the owner can change keys.</span>' : c.connected
           ? `<button class="btn btn-sm" data-test="${c.id}">${icon('refresh')} ${t('c.test')}</button><button class="btn btn-sm btn-ghost" data-conn="${c.id}">${t('c.edit')}</button><button class="btn btn-sm btn-ghost" data-rm="${c.id}" style="margin-left:auto" title="Remove key">${icon('trash')}</button>`
           : `<button class="btn btn-sm btn-primary" data-conn="${c.id}">${t('c.connect')}</button>`}</div></div>`).join('') || '<div class="empty">No connections match.</div>'}</div>
@@ -61,6 +68,7 @@ export async function render(el) {
       <div class="grid g2">
         <div class="card stack"><h3>${t('set.appearance')}</h3>
           <div class="row between"><span class="small">${t('set.theme')}</span><div class="seg"><button data-th="light" class="${theme === 'light' ? 'active' : ''}">${t('set.light')}</button><button data-th="dark" class="${theme === 'dark' ? 'active' : ''}">${t('set.dark')}</button></div></div>
+          ${isOwner ? `<div class="row between"><span class="small">Time zone (routines, calendar)</span><select class="select" id="tz" style="max-width:220px;height:32px">${TZS.map((z) => `<option ${z === tz ? 'selected' : ''}>${z}</option>`).join('')}</select></div>` : ''}
           <div class="row between"><span class="small">${t('c.language')}</span><div class="seg"><button data-l="en" class="${getLang() === 'en' ? 'active' : ''}">English</button><button data-l="fr" class="${getLang() === 'fr' ? 'active' : ''}">Français (QC)</button></div></div>
         </div>
         ${isOwner ? `<div class="card stack"><h3>${t('set.export')}</h3><p class="small muted">Download everything the OS stores as JSON. API keys and embeddings are never included.</p>
@@ -105,6 +113,9 @@ export async function render(el) {
     if (isOwner) mountMcp($('#mcpcard', el));
     // The error log loads once per visit; search redraws reuse the same card.
     if (!errorsCard) { errorsCard = $('#errcard', el); mountErrors(errorsCard); } else $('#errcard', el).replaceWith(errorsCard);
+    const gin = $('#gin', el); if (gin) gin.onclick = async () => { gin.disabled = true; try { const r = await api('google', { body: { action: 'start' } }); location.href = r.url; } catch (e) { toast(e.message); gin.disabled = false; } };
+    const gout = $('#gout', el); if (gout) gout.onclick = async () => { try { await api('google', { body: { action: 'disconnect' } }); toast('Signed out of Google'); await load(); draw(); } catch (e) { toast(e.message); } };
+    const tzs = $('#tz', el); if (tzs) tzs.onchange = async () => { try { await q(live.sb.from('profiles').update({ timezone: tzs.value }).eq('owner_id', live.ownerId)); toast('Time zone saved'); } catch (e) { toast(e.message); } };
     const cvl = $('#cvload', el); if (cvl) cvl.onclick = () => loadCustomValues();
     const del = $('#del', el), delbtn = $('#delbtn', el);
     if (!del) return;
@@ -169,6 +180,11 @@ export async function render(el) {
       onMount: (ov, close) => { ov.querySelector('[data-ok]').onclick = async () => { try { await api('keys', { method: 'DELETE', body: { provider: c.id } }); close(); toast('Removed'); await load(); draw(); } catch (e) { toast(e.message); } }; } });
   }
 
+  const gres = new URLSearchParams((location.hash.split('?')[1]) || '').get('google');
+  if (gres) {
+    toast(gres === 'connected' ? 'Signed in with Google' : gres === 'denied' ? 'Google sign-in was cancelled' : gres === 'no_refresh' ? 'Google did not return a long-term token. Remove this app at myaccount.google.com/permissions and sign in again.' : `Google sign-in failed${gres.startsWith('error:') ? ': ' + gres.slice(6) : '. See the Error log below.'}`, { ms: 8000 });
+    history.replaceState(null, '', '#connections');
+  }
   el.innerHTML = '<div class="empty">Loading connections...</div>';
   try { await load(); draw(); } catch (e) { el.innerHTML = `<div class="empty"><h2>Could not load connections</h2><p class="mono">${esc(e.message)}</p></div>`; }
 }

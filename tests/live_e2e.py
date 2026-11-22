@@ -10,6 +10,7 @@ providers = [
     {'id': 'highlevel', 'name': 'HighLevel', 'connected': True, 'phase': None, 'status': 'ok', 'last4': '12cf', 'fields': {'secret': ['private_integration_token'], 'plain': ['location_id']}, 'config': {}},
     {'id': 'anthropic', 'name': 'Anthropic', 'connected': True, 'phase': None, 'status': 'ok', 'last4': 'x7Qf', 'test_message': 'Key works', 'fields': {'secret': ['api_key'], 'plain': []}, 'config': {}},
     {'id': 'openai', 'name': 'OpenAI', 'connected': False, 'phase': None, 'status': 'none', 'fields': {'secret': ['api_key'], 'plain': []}, 'config': {}},
+    {'id': 'google', 'name': 'Google (Calendar and Meet)', 'connected': True, 'linked': False, 'phase': None, 'status': 'untested', 'last4': 'cret', 'test_message': 'Saved. Now click Sign in with Google.', 'fields': {'secret': ['client_secret'], 'plain': ['client_id']}, 'config': {'client_id': 'cid.apps.googleusercontent.com'}},
 ]
 
 def api(route):
@@ -42,11 +43,21 @@ def _api(route):
         a = body.get('action')
         out = {'remix': {'drafts': 2}, 'email_sequence': {'sequence_id': 'es1'}, 'funnel_build': {'version_no': 2}, 'goal': {'goal_id': 'g1'}, 'goals_sync': {'updated': 0, 'sources': {}},
                'program_propose': {'approval_id': 'apx'}, 'vault_brief': {'brief': {}}, 'learning_refresh': {'signals': 1}, 'routine_run': {'status': 'ok', 'drafts': 2}, 'content_funnel': {'drafts': 9, 'by_stage': {'tofu': 4, 'mofu': 3, 'bofu': 2}},
-               'playbook_propose': {'proposed': 2}, 'chat_models': {'models': [{'id': 'google/gemini-x', 'name': 'Gemini X'}], 'openrouter': True}, 'research_fetch': {'posts': 12, 'median': 1800},
+               'playbook_propose': {'proposed': 2}, 'chat_models': {'models': [{'id': 'google/gemini-x', 'name': 'Gemini X'}], 'openrouter': True},
+               'call_analyze': {'analysis': {}}, 'call_to_brain': {'source_id': 's1'}, 'call_to_playbook': {'proposed': 1},
+               'revenue': {'stripe': True, 'stripe_error': None, 'entries': [{'id': 're1', 'occurred_on': '2026-11-02', 'amount': 1500, 'currency': 'CAD', 'client': 'Batisseur', 'description': 'Retainer', 'recurring': True}],
+                           'charges': [{'id': 'ch_1', 'amount': 497, 'currency': 'USD', 'date': '2026-11-03', 'description': 'Lead Gen'}],
+                           'summary': {'currencies': ['USD', 'CAD'], 'mrr': {'USD': 497, 'CAD': 1500}, 'this_month': {'USD': 497, 'CAD': 1500}, 'last_month': {'USD': 994, 'CAD': 1500},
+                                       'months': [{'month': m, 'USD': {'stripe': v, 'manual': 0, 'total': v}, 'CAD': {'stripe': 0, 'manual': 1500, 'total': 1500}} for m, v in [('2026-06', 0), ('2026-07', 497), ('2026-08', 497), ('2026-09', 994), ('2026-10', 994), ('2026-11', 497)]]}}, 'research_fetch': {'posts': 12, 'median': 1800},
                'graphic': {'b64': 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP4z8DwHwyBNAOU8R8AjjgL9YdRIygAAAAASUVORK5CYII=', 'media_type': 'image/png', 'prompt': 'p', 'model': 'm', 'cost': 0.04}, 'rewrite_email': {'subject': 'New subject', 'preview': '', 'body': 'Shorter body'}}.get(a, {'ok': True})
     elif path == 'account' and body.get('action') == 'mcp_token_create': out = {'token': 'cfos_' + 'T' * 43, 'id': 'mt2', 'name': body['name'], 'scope': body['scope'], 'token_prefix': 'cfos_TTTTTTT'}
     elif path == 'account' and body.get('action') == 'member_invite': out = {'member': {'id': 'wm1', 'email': body['email'], 'role': 'member'}}
     elif path == 'account' and body.get('action') == 'mcp_undo': out = {'ok': True, 'message': 'Restored the previous value'}
+    elif path == 'google':
+        a = body.get('action')
+        out = {'start': {'url': '#connections?google=connected'}, 'calendar': {'events': [{'id': 'e1', 'title': 'Discovery call with Marc', 'start': '2030-01-01T15:00:00Z', 'end': '2030-01-01T15:30:00Z', 'all_day': False, 'meet': True}]},
+               'meet_list': {'calls': [{'record': 'conferenceRecords/r9', 'transcript': 'conferenceRecords/r9/transcripts/t9', 'start': '2026-11-21T15:00:00Z', 'end': '2026-11-21T15:20:00Z', 'title': 'Coaching with Sophie', 'imported': False}]},
+               'meet_import': {'call_id': 'new-call', 'chars': 1200}}.get(a, {'ok': True})
     elif path == 'meta': out = {'range': 'last_7d', 'spend': 198.8, 'leads': 14, 'cpl': 14.2, 'previous': {'spend': 160, 'leads': 10, 'cpl': 16}, 'campaigns': [{'id': '1', 'name': 'Mortgage leads', 'spend': 198.8, 'leads': 14, 'cpl': 14.2}]}
     elif path == 'chat': out = {'thread_id': 't1', 'messages': [], 'drafts': [{'id': 'new', 'title': 'Hooks', 'type': 'Hooks'}], 'warnings': ['Brain search skipped: OpenAI has no credits left.']}
     elif path == 'brain' and body.get('action') == 'search': out = {'results': [{'source_name': 'about_me', 'content': 'mortgage brokers', 'similarity': 0.82}]}
@@ -403,9 +414,41 @@ try:
         sent = [c for c in calls if c[0] == 'chat'][-1][2]
         assert sent['model'] == 'or:google/gemini-x', sent
         pg.evaluate("localStorage.removeItem('os.chatModel')")
+
+        # 33. Phase 9: calls, review, Brain, playbook, Meet import, paste
+        pg.goto(base + '#calls'); pg.wait_for_selector('text=Pricing-focused discovery call.')
+        assert pg.locator('text=Tie it to lost leads first').count() == 1 and pg.locator('text=Send proposal Friday').count() == 1
+        pg.click('#crev'); pg.wait_for_selector('text=Review ready')
+        assert [c for c in calls if c[0] == 'studio'][-1][2] == {'action': 'call_analyze', 'id': 'cl1'}
+        pg.click('#cbrain'); pg.wait_for_selector('text=Added to the Brain')
+        assert any(c[0] == 'brain' and c[2] == {'action': 'ingest', 'source_id': 's1'} for c in calls)
+        pg.click('#cpb'); pg.wait_for_selector('text=1 answer sent to Brain')
+        pg.click('#meet'); pg.wait_for_selector('.modal >> text=Coaching with Sophie'); pg.check('[data-mi="0"]'); pg.select_option('[data-mk="0"]', 'coaching'); pg.click('.modal [data-ok]'); pg.wait_for_selector('text=1 call imported')
+        mi = [c for c in calls if c[0] == 'google' and c[2].get('action') == 'meet_import'][-1][2]
+        assert mi['transcript'] == 'conferenceRecords/r9/transcripts/t9' and mi['kind'] == 'coaching', mi
+        pg.click('#paste'); pg.fill('#pt', 'Coaching with Leo'); pg.fill('#px', 'Leo: How do I get more leads?\nJasinthan: Start with your follow-up speed, then fix the form.'); pg.click('.modal [data-ok]'); pg.wait_for_selector('h2:has-text("Coaching with Leo")')
+        cl = pg.evaluate("window.__FAKE_DB__.calls.find(c => c.title === 'Coaching with Leo')")
+        assert cl['source'] == 'paste' and cl['speakers'] == ['Leo', 'Jasinthan'] and cl['owner_id'] == '11111111-1111-1111-1111-111111111111', cl
+        shot(pg, 'calls')
+
+        # 34. Phase 9: revenue
+        pg.goto(base + '#revenue'); pg.wait_for_selector('text=Monthly recurring')
+        assert '$497' in pg.locator('.stat').first.inner_text()
+        pg.click('[data-cur=CAD]'); pg.wait_for_selector('text=By month (CAD)'); assert 'CA$1,500' in pg.locator('.stat').nth(1).inner_text()
+        assert pg.locator('svg[aria-label="Revenue by month in CAD"] rect').count() == 6
+        pg.click('#radd'); pg.fill('#rc', 'Investimaitre'); pg.fill('#ra', '800'); pg.select_option('#ry', 'CAD'); pg.check('#rr'); pg.click('.modal [data-ok]'); pg.wait_for_selector('text=Logged')
+        re = pg.evaluate("window.__FAKE_DB__.revenue_entries[0]")
+        assert re['amount'] == 800 and re['currency'] == 'CAD' and re['recurring'] is True and re['client'] == 'Investimaitre', re
+        shot(pg, 'revenue')
+
+        # 35. Phase 9: Google sign-in from Settings, and today's calendar on Home
+        pg.goto(base + '#connections'); pg.wait_for_selector('#gin'); pg.click('#gin'); pg.wait_for_selector('text=Signed in with Google')
+        assert [c for c in calls if c[0] == 'google'][-1][2] == {'action': 'start'}
+        pg.goto(base + '#home'); pg.wait_for_selector('#todaycal'); assert pg.locator('text=Discovery call with Marc').count() == 1
+        assert pg.locator('#homerev').count() == 1
         b.close()
 finally:
     srv.terminate()
 if errors:
     print('\n'.join(errors)); sys.exit(1)
-print('OK: live mode e2e (login, Brain, keys, Approvals, Chat, Team, Pipeline, HighLevel writes, Jarvis, Content, Emails, Funnels, Graphics, Vault, Goals, Programs, Routines, MCP, Error log, CSP, Team, My feed, Funnel, Playbook, Models)')
+print('OK: live mode e2e (login, Brain, keys, Approvals, Chat, Team, Pipeline, HighLevel writes, Jarvis, Content, Emails, Funnels, Graphics, Vault, Goals, Programs, Routines, MCP, Error log, CSP, Team, My feed, Funnel, Playbook, Models, Calls, Revenue, Google)')

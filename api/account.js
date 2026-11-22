@@ -8,10 +8,10 @@ import { errorRow } from './_lib/errors.js';
 const EXPORT_TABLES = ['profiles', 'offers', 'brain_sources', 'brain_facts', 'style_guides', 'brand_dna', 'agents', 'threads', 'messages',
   'agent_routines', 'approvals', 'content_items', 'research_creators', 'research_posts', 'learning_signals', 'funnels', 'funnel_versions',
   'email_sequences', 'brand_board', 'graphics', 'graphic_versions', 'programs', 'program_modules', 'program_lessons', 'vault_items',
-  'goals', 'goal_items', 'connections', 'audit_log', 'hl_write_log', 'error_log'];
+  'goals', 'goal_items', 'connections', 'audit_log', 'hl_write_log', 'error_log', 'voice_playbook', 'apify_runs', 'calls', 'revenue_entries'];
 
 // Delete order respects foreign keys. Profiles stay so the account still works.
-const DELETE_TABLES = ['workspace_members', 'error_log', 'mcp_edit_log', 'mcp_tokens', 'hl_write_log', 'goal_items', 'goals', 'vault_items', 'program_lessons', 'program_modules',
+const DELETE_TABLES = ['workspace_members', 'calls', 'revenue_entries', 'voice_playbook', 'apify_runs', 'error_log', 'mcp_edit_log', 'mcp_tokens', 'hl_write_log', 'goal_items', 'goals', 'vault_items', 'program_lessons', 'program_modules',
   'programs', 'graphic_versions', 'graphics', 'brand_board', 'email_sequences', 'funnel_versions', 'funnels', 'learning_signals', 'research_posts',
   'research_creators', 'content_items', 'approvals', 'agent_routines', 'messages', 'threads', 'agents', 'brand_dna', 'style_guides',
   'brain_facts', 'brain_chunks', 'brain_sources', 'offers', 'connections', 'provider_keys', 'audit_log'];

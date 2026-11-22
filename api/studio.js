@@ -8,8 +8,10 @@ import {
   EMAIL_SYSTEM, emailPrompt, validateSequence, REWRITE_SYSTEM, FUNNEL_SYSTEM, funnelPrompt, validateFunnel, GOAL_SYSTEM, goalPrompt, validateGoal, goalValue,
   PROGRAM_SYSTEM, validateProgram, programText, VAULT_SYSTEM, validateBrief, briefText, graphicPrompt, aspectFor, scorePosts, mapInstagram, mapYouTube,
   computeSignals, signalsBlock, SEQUENCE_TYPES, apifyPlan, apifyRun, FUNNEL_STAGES, CONTENT_FUNNEL_SYSTEM, contentFunnelPrompt, validateContentFunnel, ideaBody,
-  PLAYBOOK_SYSTEM, playbookPrompt, validatePlaybook,
+  PLAYBOOK_SYSTEM, playbookPrompt, validatePlaybook, CALL_SYSTEM, callPrompt, validateCall, callBrainText, CALL_KINDS,
 } from './_lib/studio.js';
+import { extractText } from './_lib/brain.js';
+import { revenueNow } from './_lib/context.js';
 import { runRoutine } from './_lib/routines.js';
 
 export const config = { maxDuration: 60 };
@@ -240,6 +242,59 @@ No forced sales pitch.`;
     if (pairs.length) await one(db.from('voice_playbook').insert(pairs.map((p) => ({ owner_id: user.id, question: p.question, answer: p.answer, source_quote: p.quote, status: 'proposed', authored_by: 'ai' }))));
     return { proposed: pairs.length };
   }
+
+  // Calls: AI review of a transcript (summary, objections, questions, what to improve, next steps).
+  if (a === 'call_analyze') {
+    const c = await one(db.from('calls').select('*').eq('id', String(body.id || '')).single());
+    try {
+      const review = validateCall(parseJson(await ask(await withDna(CALL_SYSTEM), callPrompt(c, 'The owner'), 4000)));
+      const r = await one(db.from('calls').update({ analysis: review, status: 'analyzed', error: null, version: c.version + 1 }).eq('id', c.id).eq('version', c.version).select('id'));
+      if (!r.length) throw new HttpError(409, 'This call changed while it was being reviewed. Try again.');
+      return { analysis: review };
+    } catch (e) {
+      if (!(e instanceof HttpError) || e.status >= 500) await db.from('calls').update({ status: 'error', error: String(e.message).slice(0, 300), version: c.version + 1 }).eq('id', c.id).eq('version', c.version);
+      throw e;
+    }
+  }
+
+  // A transcript file (PDF, DOCX, TXT, VTT, SRT) uploaded to the owner's folder becomes a call.
+  if (a === 'call_from_file') {
+    const path = String(body.path || '');
+    if (!path.startsWith(`${user.id}/calls/`)) throw new HttpError(400, 'Invalid file');
+    const { data: blob, error } = await db.storage.from('brain').download(path);
+    if (error) throw new HttpError(400, 'Could not read that file');
+    let text = await extractText({ bytes: await blob.arrayBuffer(), mime: body.mime || blob.type || '', name: body.name || path });
+    // Subtitle files: drop cue numbers and timestamps.
+    if (/\.(vtt|srt)$/i.test(body.name || '')) text = text.split('\n').filter((l) => l.trim() && !/^\d+$/.test(l.trim()) && !/-->/.test(l) && !/^WEBVTT/.test(l)).join('\n');
+    if (text.trim().length < 50) throw new HttpError(400, 'That file has no readable transcript');
+    const row = await one(db.from('calls').insert({ owner_id: user.id, title: String(body.title || body.name || 'Uploaded call').slice(0, 200), kind: CALL_KINDS.includes(body.kind) ? body.kind : 'sales',
+      occurred_at: body.occurred_at || null, source: 'upload', transcript: text.slice(0, 400000), status: 'new', authored_by: 'me' }).select('id').single());
+    await db.storage.from('brain').remove([path]);
+    return { call_id: row.id, chars: text.length };
+  }
+
+  // Add a call to the Brain as a source; the browser then runs the usual processing and fact proposals.
+  if (a === 'call_to_brain') {
+    const c = await one(db.from('calls').select('*').eq('id', String(body.id || '')).single());
+    if (c.brain_source_id) return { source_id: c.brain_source_id, existing: true };
+    const src = await one(db.from('brain_sources').insert({ owner_id: user.id, kind: 'text', name: `Call: ${c.title}`.slice(0, 200), content: callBrainText(c), mime: 'text/plain', is_writing_sample: false }).select('id').single());
+    await one(db.from('calls').update({ brain_source_id: src.id, version: c.version + 1 }).eq('id', c.id).eq('version', c.version));
+    return { source_id: src.id };
+  }
+
+  // Answers the owner gave on a call, proposed into the voice playbook for review.
+  if (a === 'call_to_playbook') {
+    const c = await one(db.from('calls').select('title, analysis').eq('id', String(body.id || '')).single());
+    const faq = c.analysis?.faq_candidates || [];
+    if (!faq.length) throw new HttpError(400, 'Review the call first. No answers were found to add.');
+    const have = new Set((await one(db.from('voice_playbook').select('question'))).map((p) => p.question.toLowerCase().trim()));
+    const add = faq.filter((f) => !have.has(f.question.toLowerCase().trim()));
+    if (add.length) await one(db.from('voice_playbook').insert(add.map((f) => ({ owner_id: user.id, question: f.question, answer: f.answer, source_quote: `From call: ${c.title}`.slice(0, 400), status: 'proposed', authored_by: 'ai' }))));
+    return { proposed: add.length };
+  }
+
+  // Revenue: Stripe (when a key is saved) plus manual entries.
+  if (a === 'revenue') return revenueNow(db, admin, user.id);
 
   // Text models available through OpenRouter, for the model picker in AI Chat.
   if (a === 'chat_models') {

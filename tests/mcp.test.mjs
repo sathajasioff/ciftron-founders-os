@@ -190,7 +190,7 @@ test('no tool reads secrets, connection settings or HighLevel conversations', as
   // Calling every read tool never touches provider_keys directly (getSecret is only used for search, server side).
   const admin = seed();
   const tools = buildTools({ admin, ownerId: OWNER, token: rw });
-  for (const t of tools.filter((x) => x.annotations.readOnlyHint && !x.inputSchema.required.length && !['get_business_snapshot', 'get_ads_summary'].includes(x.name))) await t.run({});
+  for (const t of tools.filter((x) => x.annotations.readOnlyHint && !x.inputSchema.required.length && !['get_business_snapshot', 'get_ads_summary', 'get_revenue'].includes(x.name))) await t.run({});
   assert.ok(!admin.calls.some((c) => c.table === 'provider_keys' || c.table === 'connections'));
   const out = JSON.stringify(await Promise.all(tools.filter((x) => x.name.startsWith('list_')).map((t) => t.run({}))));
   assert.ok(!out.includes('sk-ant-secret') && !out.includes('ciphertext'));

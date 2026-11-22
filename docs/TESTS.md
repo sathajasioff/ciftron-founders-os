@@ -62,6 +62,11 @@ Run everything with `npm run test:all`. The unit, database and API tests need no
 | Content funnel | studio "content funnel"; api "content funnel"; e2e 30, 30b |
 | Voice playbook: quoted proposals, approved pairs in every prompt | studio "playbook"; api "playbook"; db "voice_playbook"; e2e 31 |
 | Model picker: Claude, GPT, OpenRouter | api "model picker"; e2e 32 |
+| **Business data (Phase 9)** | |
+| Google sign-in: signed state, encrypted refresh token, owner only | business "google state", "google auth URL"; api "google: owner gets a sign-in link…"; e2e 35 |
+| Calendar in Jarvis and Home (titles and times only) | business "calendar"; api "keys: Google test…"; e2e 35 |
+| Calls: Meet import with speakers, paste, upload, AI review, Brain, Playbook | business "meet", "call review"; api "google: Meet calls…", "calls: AI review…"; db "calls…"; e2e 33 |
+| Revenue: Stripe (net of refunds, MRR) + logged payments, by month and currency | business "stripe", "revenue summary"; api "revenue"; db "…revenue_entries…"; e2e 34 |
 | **MCP and routines** | |
 | MCP protocol (current and legacy clients, headers, versions, Origin) | mcp protocol tests ×10; api "mcp over HTTP"; checked against the official MCP SDK client |
 | Revocable read or read-write tokens, hashed | mcp "tokens"; api "account … MCP token", "mcp over HTTP"; db "mcp tables"; e2e 26 |

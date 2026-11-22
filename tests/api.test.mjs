@@ -404,3 +404,128 @@ test('model picker: GPT and OpenRouter models answer chat; unknown models are re
   assert.deepEqual(m.body.models.map((x) => x.id), ['google/gemini-x']);
   assert.ok(!fake.log.some((l) => l.external?.includes('anthropic')), 'no Claude key needed');
 });
+
+// Phase 9
+import { signState } from '../api/_lib/google.js';
+const googleSeed = (extra = {}) => ({
+  connections: [{ owner_id: OWNER.id, provider: 'google', config: { client_id: 'cid.apps.googleusercontent.com' } }],
+  provider_keys: [key('google', 'client_secret', 'GOCSPX-secret'), key('anthropic', 'api_key', 'sk-ant-k'), ...(extra.keys || [])],
+  ...extra.tables,
+});
+const callGet = async (fn, url) => {
+  const res = { statusCode: 200, headers: {}, setHeader(k, v) { this.headers[k.toLowerCase()] = v; }, end() { return this; }, status(c) { this.statusCode = c; return this; }, json() { return this; } };
+  await fn({ method: 'GET', url, headers: { host: 'os.ciftron.com', 'x-forwarded-proto': 'https' } }, res);
+  return res;
+};
+
+test('google: owner gets a sign-in link; the callback stores the refresh token encrypted; bad state is refused', async () => {
+  fake = installFakeSupabase({ seed: googleSeed(), external: async (url) => (url.hostname === 'oauth2.googleapis.com' ? ok({ access_token: 'ya29.a', refresh_token: '1//refresh-secret-token', expires_in: 3599 }) : ok({})) });
+  const google = await load('google');
+  const st = await invoke(google, { body: { action: 'start' }, headers: { host: 'os.ciftron.com', 'x-forwarded-proto': 'https' } });
+  assert.equal(st.status, 200, JSON.stringify(st.body));
+  const u = new URL(st.body.url);
+  assert.equal(u.searchParams.get('client_id'), 'cid.apps.googleusercontent.com');
+  assert.equal(u.searchParams.get('redirect_uri'), 'https://os.ciftron.com/api/google');
+  assert.equal((await invoke(google, { token: MEMBER_TOKEN, body: { action: 'start' } })).status, 403);
+  const cb = await callGet(google, `/api/google?code=4/abc&state=${encodeURIComponent(u.searchParams.get('state'))}`);
+  assert.equal(cb.statusCode, 302);
+  assert.equal(cb.headers.location, '/#connections?google=connected');
+  const rt = fake.tables.provider_keys.find((k) => k.provider === 'google' && k.field === 'refresh_token');
+  assert.ok(rt && !JSON.stringify(rt).includes('refresh-secret-token'), 'stored encrypted');
+  const exchange = fake.log.find((l) => l.external?.startsWith('https://oauth2.googleapis.com/token'));
+  assert.match(exchange.body, /grant_type=authorization_code/);
+  assert.match(exchange.body, /redirect_uri=https%3A%2F%2Fos.ciftron.com%2Fapi%2Fgoogle/);
+  const good = signState(OWNER.id), dot = good.indexOf('.') + 1;
+  const forged = good.slice(0, dot) + (good[dot] === 'A' ? 'B' : 'A') + good.slice(dot + 1);
+  const bad = await callGet(google, `/api/google?code=x&state=${encodeURIComponent(forged)}`);
+  assert.match(bad.headers.location, /google=error/);
+  assert.equal(fake.tables.provider_keys.filter((k) => k.field === 'refresh_token').length, 1);
+  const denied = await callGet(google, '/api/google?error=access_denied&state=x');
+  assert.equal(denied.headers.location, '/#connections?google=denied');
+});
+
+test('google: Meet calls list with an imported flag; import stores the transcript once', async () => {
+  const meet = {
+    '/v2/conferenceRecords': { conferenceRecords: [{ name: 'conferenceRecords/r1', startTime: '2026-11-20T15:00:00Z', endTime: '2026-11-20T15:30:00Z', space: 'spaces/s1' }] },
+    '/v2/conferenceRecords/r1/transcripts': { transcripts: [{ name: 'conferenceRecords/r1/transcripts/t1', state: 'FILE_GENERATED' }] },
+    '/v2/spaces/s1': { meetingCode: 'abc' },
+    '/calendar/v3/calendars/primary/events': { items: [{ id: 'e', summary: 'Broker discovery', start: { dateTime: '2026-11-20T15:00:00Z' }, conferenceData: { conferenceId: 'abc' } }] },
+    '/v2/conferenceRecords/r1/participants': { participants: [{ name: 'conferenceRecords/r1/participants/p1', signedinUser: { displayName: 'Marc' } }] },
+    '/v2/conferenceRecords/r1/transcripts/t1/entries': { transcriptEntries: [{ participant: 'conferenceRecords/r1/participants/p1', text: 'What does it cost?', startTime: '2026-11-20T15:01:00Z', endTime: '2026-11-20T15:01:03Z' }] },
+  };
+  fake = installFakeSupabase({
+    seed: googleSeed({ keys: [key('google', 'refresh_token', '1//rt')] }),
+    external: async (url) => (url.hostname === 'oauth2.googleapis.com' ? ok({ access_token: 'ya29.a' }) : meet[url.pathname] ? ok(meet[url.pathname]) : new Response('{}', { status: 404 })),
+  });
+  const google = await load('google');
+  const l = await invoke(google, { body: { action: 'meet_list' } });
+  assert.equal(l.status, 200, JSON.stringify(l.body));
+  assert.deepEqual([l.body.calls[0].title, l.body.calls[0].imported], ['Broker discovery', false]);
+  const im = await invoke(google, { body: { action: 'meet_import', record: 'conferenceRecords/r1', transcript: 'conferenceRecords/r1/transcripts/t1', title: 'Broker discovery', start: '2026-11-20T15:00:00Z', kind: 'sales' } });
+  assert.equal(im.status, 200, JSON.stringify(im.body));
+  assert.equal(fake.tables.calls[0].transcript, 'Marc: What does it cost?');
+  assert.equal(fake.tables.calls[0].owner_id, OWNER.id);
+  assert.equal((await invoke(google, { body: { action: 'meet_list' } })).body.calls[0].imported, true);
+  assert.equal((await invoke(google, { body: { action: 'meet_import', record: 'conferenceRecords/r1', transcript: '../../etc/passwd' } })).status, 400);
+  const cal = await invoke(google, { token: MEMBER_TOKEN, body: { action: 'calendar' } });
+  assert.equal(cal.status, 403, 'not a member yet');
+});
+
+test('calls: AI review saved with a version bump; added to the Brain once; answers proposed to the playbook', async () => {
+  fake = installFakeSupabase({
+    seed: { provider_keys: [key('anthropic', 'api_key', 'sk-ant-k')], calls: [{ id: 'c1', owner_id: OWNER.id, title: 'Broker discovery', kind: 'sales', source: 'paste', transcript: 'Marc: What does it cost?\nJasinthan: It is 497 a month.', speakers: ['Marc', 'Jasinthan'], status: 'new', version: 1 }] },
+    external: async () => reply(JSON.stringify({ summary: 'Pricing call.', outcome: 'Follow up Friday', questions_asked: ['What does it cost?'], objections: [{ objection: 'Price', how_handled: 'Stated price', better_response: 'Tie it to lost leads' }], went_well: ['Clear'], improve: ['Ask budget first'], next_steps: ['Send proposal'], faq_candidates: [{ question: 'What does it cost?', answer: 'It is 497 a month.' }] })),
+  });
+  fake.tables.calls[0].version = 1;
+  const studio = await load('studio');
+  const r = await invoke(studio, { body: { action: 'call_analyze', id: 'c1' } });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual([fake.tables.calls[0].status, fake.tables.calls[0].version, fake.tables.calls[0].analysis.objections[0].objection], ['analyzed', 2, 'Price']);
+  const prompt = JSON.parse(fake.log.find((l) => l.external?.includes('anthropic')).body).messages[0].content;
+  assert.match(prompt, /It is 497 a month/);
+  const b = await invoke(studio, { body: { action: 'call_to_brain', id: 'c1' } });
+  assert.equal(b.status, 200, JSON.stringify(b.body));
+  assert.match(fake.tables.brain_sources[0].content, /Summary: Pricing call\.[\s\S]*Marc: What does it cost\?/);
+  assert.equal(fake.tables.calls[0].brain_source_id, b.body.source_id);
+  assert.equal((await invoke(studio, { body: { action: 'call_to_brain', id: 'c1' } })).body.existing, true);
+  const p = await invoke(studio, { body: { action: 'call_to_playbook', id: 'c1' } });
+  assert.equal(p.body.proposed, 1);
+  assert.equal(fake.tables.voice_playbook[0].status, 'proposed');
+  assert.equal((await invoke(studio, { body: { action: 'call_to_playbook', id: 'c1' } })).body.proposed, 0, 'no duplicates');
+});
+
+test('revenue: Stripe and logged payments combine; no Stripe key still works; Jarvis hears the totals', async () => {
+  const now = new Date();
+  const thisMonth = now.toISOString().slice(0, 10);
+  fake = installFakeSupabase({
+    seed: { provider_keys: [key('stripe', 'api_key', 'rk_live_x'), key('anthropic', 'api_key', 'sk-ant-k')], revenue_entries: [{ id: 'r1', owner_id: OWNER.id, occurred_on: thisMonth, amount: 1500, currency: 'CAD', client: 'Batisseur', recurring: true }] },
+    external: async (url) => {
+      if (url.hostname === 'api.stripe.com') return url.pathname.endsWith('/charges') ? ok({ has_more: false, data: [{ id: 'ch_1', status: 'succeeded', paid: true, amount: 49700, amount_refunded: 0, currency: 'usd', created: Math.floor(Date.now() / 1000) }] }) : ok({ has_more: false, data: [] });
+      if (url.hostname === 'api.anthropic.com') return reply('You made 497 USD and 1500 CAD this month.');
+      return new Response('{}', { status: 404 });
+    },
+  });
+  const studio = await load('studio'), chat = await load('chat');
+  const r = await invoke(studio, { body: { action: 'revenue' } });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual([r.body.stripe, r.body.summary.this_month.USD, r.body.summary.this_month.CAD, r.body.summary.mrr.CAD], [true, 497, 1500, 1500]);
+  await invoke(chat, { body: { mode: 'jarvis', message: 'How much did I make?' } });
+  const sys = JSON.parse(fake.log.filter((l) => l.external?.includes('anthropic')).at(-1).body).system;
+  assert.match(sys, /Revenue: USD 497 this month/);
+  fake.tables.provider_keys = fake.tables.provider_keys.filter((k) => k.provider !== 'stripe');
+  const r2 = await invoke(studio, { body: { action: 'revenue' } });
+  assert.deepEqual([r2.body.stripe, r2.body.stripe_error, r2.body.summary.this_month.CAD], [false, null, 1500]);
+});
+
+test('keys: Google test refreshes the token and reads the calendar; without sign-in it asks for it', async () => {
+  fake = installFakeSupabase({ seed: googleSeed(), external: async (url) => (url.hostname === 'oauth2.googleapis.com' ? ok({ access_token: 'ya29.a' }) : ok({ items: [{ id: '1', summary: 'x', start: { dateTime: new Date().toISOString() } }] })) });
+  const keys = await load('keys');
+  const t1 = await invoke(keys, { body: { action: 'test', provider: 'google' } });
+  assert.match(t1.body.message, /Sign in with Google/);
+  fake.tables.provider_keys.push(key('google', 'refresh_token', '1//rt'));
+  const t2 = await invoke(keys, { body: { action: 'test', provider: 'google' } });
+  assert.equal(t2.body.status, 'ok', JSON.stringify(t2.body));
+  const st = await invoke(keys, { method: 'GET' });
+  const g = st.body.providers.find((p) => p.id === 'google');
+  assert.deepEqual([g.connected, g.linked, g.last4], [true, true, 'cret']);
+});

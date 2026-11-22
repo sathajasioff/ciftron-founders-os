@@ -324,3 +324,38 @@ export function computeSignals(items) {
   return out;
 }
 export const signalsBlock = (signals) => (signals.length ? `# What the owner's past decisions show (use as guidance)\n${signals.map((s) => '- ' + s.signal).join('\n')}` : '');
+
+// ---------- Calls ----------
+export const CALL_KINDS = ['sales', 'coaching', 'team', 'other'];
+export const CALL_SYSTEM = `You review a recorded call for one business owner and give honest, specific coaching.
+Work only from the transcript. Quote the speakers' real words where useful. Never invent numbers, promises or outcomes that are not in the transcript.
+For sales calls focus on discovery, objections, offer clarity and the close. For coaching calls focus on the client's problems, the advice given and follow-ups.
+${RULES}
+Return only JSON:
+{"summary": "3 to 5 sentences", "outcome": "what was agreed or decided, or 'No decision'",
+ "questions_asked": ["questions the other person asked, in their words"],
+ "objections": [{"objection": "...", "how_handled": "...", "better_response": "..."}],
+ "went_well": ["..."], "improve": ["specific, with what to say next time"],
+ "next_steps": ["owner's follow-ups, with who and when if said"],
+ "faq_candidates": [{"question": "...", "answer": "the owner's answer in their words from the call"}]}`;
+export function callPrompt(call, ownerName = 'the owner') {
+  return `Call: ${call.title} (${call.kind}${call.occurred_at ? `, ${String(call.occurred_at).slice(0, 10)}` : ''}${call.duration_min ? `, ${call.duration_min} min` : ''}).
+Speakers: ${(call.speakers || []).join(', ') || 'unknown'}. ${ownerName} is the owner.
+
+# Transcript
+${String(call.transcript).slice(0, 120000)}`;
+}
+const list = (v, n = 12) => arr(v, n).map((x) => str(x, 600)).filter(Boolean);
+export function validateCall(j) {
+  const out = {
+    summary: str(j?.summary, 1500), outcome: str(j?.outcome, 600),
+    questions_asked: list(j?.questions_asked), went_well: list(j?.went_well, 8), improve: list(j?.improve, 8), next_steps: list(j?.next_steps, 10),
+    objections: arr(j?.objections, 10).map((o) => ({ objection: str(o?.objection, 400), how_handled: str(o?.how_handled, 600), better_response: str(o?.better_response, 800) })).filter((o) => o.objection),
+    faq_candidates: arr(j?.faq_candidates, 8).map((f) => ({ question: str(f?.question, 300), answer: str(f?.answer, 1200) })).filter((f) => f.question && f.answer),
+  };
+  if (!out.summary) throw new Error('The AI returned no review. Try again.');
+  return out;
+}
+export const callBrainText = (c) => `${c.title} (${c.kind} call${c.occurred_at ? `, ${String(c.occurred_at).slice(0, 10)}` : ''})
+${c.analysis?.summary ? `\nSummary: ${c.analysis.summary}\n` : ''}
+${c.transcript}`;
