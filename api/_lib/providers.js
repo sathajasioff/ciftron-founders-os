@@ -55,20 +55,43 @@ export async function embed(apiKey, inputs) {
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: EMBED_MODEL, input: inputs.slice(i, i + 96) }),
     });
-    if (!r.ok) throw new HttpError(502, `OpenAI embeddings failed (${r.status}): ${(await r.text()).slice(0, 200)}`);
+    if (!r.ok) throw await providerError('OpenAI', r);
     const j = await r.json();
     out.push(...j.data.sort((a, b) => a.index - b.index).map((d) => d.embedding));
   }
   return out;
 }
 
-export async function claude(apiKey, { system, prompt, maxTokens = 4000 }) {
+export const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-6.1-sol';
+
+// Turn provider billing and auth errors into a plain message the owner can act on.
+async function providerError(name, r) {
+  const text = (await r.text()).slice(0, 300);
+  if (/credit balance|insufficient_quota|billing|credit_balance/i.test(text)) return new HttpError(402, `${name} has no credits left. Add credits in your ${name} billing page.`, { needs: name.toLowerCase() });
+  if (r.status === 401 || r.status === 403) return new HttpError(400, `${name} rejected the key. Update it in Connections.`, { needs: name.toLowerCase() });
+  if (r.status === 429) return new HttpError(429, `${name} rate limit reached. Try again in a minute.`);
+  return new HttpError(502, `${name} request failed (${r.status}): ${text}`);
+}
+
+// prompt: a single user message. messages: full history with content blocks (images, text).
+export async function claude(apiKey, { system, prompt, messages, maxTokens = 4000 }) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: maxTokens, system, messages: [{ role: 'user', content: prompt }] }),
+    body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: maxTokens, system, messages: messages || [{ role: 'user', content: prompt }] }),
   });
-  if (!r.ok) throw new HttpError(502, `Anthropic request failed (${r.status}): ${(await r.text()).slice(0, 200)}`);
+  if (!r.ok) throw await providerError('Anthropic', r);
   const j = await r.json();
   return j.content.filter((c) => c.type === 'text').map((c) => c.text).join('');
+}
+
+export async function gpt(apiKey, { system, prompt, maxTokens = 1200 }) {
+  const r = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: OPENAI_MODEL, max_completion_tokens: maxTokens, messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }] }),
+  });
+  if (!r.ok) throw await providerError('OpenAI', r);
+  const j = await r.json();
+  return j.choices?.[0]?.message?.content || '';
 }

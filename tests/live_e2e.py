@@ -30,6 +30,7 @@ def _api(route):
     elif path == 'brain' and body.get('action') == 'compile': out = {'brand_dna': {'version_no': 2}}
     elif path == 'brain' and body.get('action') == 'ingest': out = {'ok': True, 'chunks': 7}
     elif path == 'brain' and body.get('action') == 'propose': out = {'proposed': 0}
+    elif path == 'chat': out = {'thread_id': 't1', 'messages': [], 'drafts': [{'id': 'new', 'title': 'Hooks', 'type': 'Hooks'}], 'warnings': ['Brain search skipped: OpenAI has no credits left.']}
     elif path == 'brain' and body.get('action') == 'search': out = {'results': [{'source_name': 'about_me', 'content': 'mortgage brokers', 'similarity': 0.82}]}
     route.fulfill(status=200, content_type='application/json', body=json.dumps(out))
 
@@ -114,11 +115,60 @@ try:
         pg.fill('#del', 'Delete'); assert not pg.locator('#delbtn').is_enabled()
         pg.fill('#del', 'delete'); assert pg.locator('#delbtn').is_enabled()
 
-        # 11. Demo screens still render in live mode and say which phase makes them real
+        # 11. Approvals: live count, approve creates a Content card, undo, edit, pass, trash and restore
+        pg.goto(base + '#approvals'); pg.wait_for_selector('text=5 Reel hooks: mortgage follow-up')
+        assert pg.locator('.nav-link[href="#approvals"] .count').inner_text() == '3', 'live pending count'
+        shot(pg, 'approvals')
+        pg.locator('.card', has_text='5 Reel hooks').locator('[data-act=approve]').click(); pg.wait_for_selector('text=Moved to Content')
+        ap = pg.evaluate("window.__FAKE_DB__.approvals.find(a=>a.id==='ap1')"); ci = pg.evaluate("window.__FAKE_DB__.content_items")
+        assert ap['status'] == 'approved' and ap['version'] == 2 and len(ci) == 1 and ci[0]['approval_id'] == 'ap1' and ci[0]['format'] == 'Short video', (ap, ci)
+        assert 'not cold' in ci[0]['hook']
+        pg.wait_for_function("document.querySelector('.nav-link[href=\"#approvals\"] .count').innerText === '2'")
+        pg.locator('.toast button').first.click(); pg.wait_for_function("window.__FAKE_DB__.approvals.find(a=>a.id==='ap1').status==='pending'")
+        assert pg.evaluate("window.__FAKE_DB__.content_items.length") == 0, 'undo should remove the content card'
+        pg.locator('.card', has_text='Prêt privé').locator('[data-act=edit]').click(); pg.fill('#eb', 'Votre banque a dit non? Parlons-en.'); pg.click('.modal [data-ok]')
+        pg.wait_for_selector('text=Edited by you')
+        ap2 = pg.evaluate("window.__FAKE_DB__.approvals.find(a=>a.id==='ap2')")
+        assert ap2['authored_by'] == 'me' and ap2['payload']['original'] == 'Votre banque a dit non?', ap2
+        pg.select_option('#flang', 'fr-qc'); assert pg.locator('.stack > .card').count() == 1; pg.select_option('#flang', '')
+        pg.locator('.card', has_text='Welcome sequence').locator('[data-act=trash]').click(); pg.wait_for_selector('text=Welcome sequence', state='detached')
+        pg.click('[data-tab=trash]'); pg.locator('[data-act=restore]').click(); pg.wait_for_selector('text=Restored')
+        assert pg.evaluate("window.__FAKE_DB__.approvals.find(a=>a.id==='ap3').trashed_at") is None
+
+        # 12. AI Chat: sends to /api/chat with Strategy Room flag, shows saved drafts and warnings, renders the thread
+        pg.goto(base + '#chat'); pg.wait_for_selector('text=Ask about strategy')
+        pg.evaluate('''() => { const d = window.__FAKE_DB__; const now = new Date().toISOString();
+          d.threads.unshift({ id: 't1', owner_id: '11111111-1111-1111-1111-111111111111', agent_id: null, title: 'Mortgage reels', strategy_room: true, created_at: now, updated_at: now });
+          d.messages.push({ id: 'm1', thread_id: 't1', role: 'user', content: 'Plan reels', created_at: now },
+            { id: 'm2', thread_id: 't1', role: 'strategist', content: 'Fix follow-up first.', model: 'claude-sonnet-5-5', sources: [{ kind: 'dna', label: 'Brand DNA v1' }], created_at: now },
+            { id: 'm3', thread_id: 't1', role: 'challenger', content: 'Check lead intent too.', model: 'gpt-6.1-sol', created_at: now },
+            { id: 'm4', thread_id: 't1', role: 'verdict', content: 'Verdict: do both.\\nNext steps:\\n1. Instant SMS\\n2. Add a form question', created_at: now }); }''')
+        pg.click('label:has(#room-toggle) span'); pg.fill('#prompt', 'Plan reels'); pg.click('#send')
+        pg.wait_for_selector('text=Check lead intent too.'); pg.wait_for_selector('text=1 draft saved to Approvals'); pg.wait_for_selector('text=OpenAI has no credits left')
+        sent = [c for c in calls if c[0] == 'chat'][-1][2]
+        assert sent['strategy_room'] is True and sent['message'] == 'Plan reels' and sent['thread_id'] is None, sent
+        assert pg.locator('.room.verdict li').count() == 2
+        order = pg.evaluate("[...document.querySelectorAll('#scroll .msg b, #scroll .msg.me .bubble')].map(e => e.innerText.trim())")
+        assert order.index('Plan reels') < order.index('Strategist') < order.index('Challenger') < order.index('Verdict'), order
+        shot(pg, 'chat')
+        pg.locator('[data-save=m4]').click(); pg.wait_for_selector('text=Saved to Approvals')
+        assert pg.evaluate("window.__FAKE_DB__.approvals.some(a => a.payload.body.startsWith('Verdict: do both'))")
+
+        # 13. AI Team: agents from the database, later agents locked, messages go to /api/chat with the agent slug
+        pg.goto(base + '#team'); pg.wait_for_selector('text=Arrives in Phase 5')
+        pg.locator('[data-agent=researcher]').click(); assert pg.locator('#asend').is_disabled() and pg.locator('#aen').is_disabled()
+        pg.locator('[data-agent=content-strategist]').click(); pg.fill('#amsg', '5 hooks for brokers'); pg.click('#asend')
+        pg.wait_for_selector('text=1 draft saved to Approvals')
+        sent = [c for c in calls if c[0] == 'chat'][-1][2]
+        assert sent['agent_slug'] == 'content-strategist' and sent['message'] == '5 hooks for brokers', sent
+        shot(pg, 'team')
+        pg.locator('[data-agent=chief-of-staff]').click(); assert pg.locator('#aen').is_disabled(), 'Chief of Staff is pinned on'
+
+        # 14. Demo screens still render in live mode and say which phase makes them real
         pg.goto(base + '#pipeline'); pg.wait_for_selector('#view h1'); assert 'Phase 4' in pg.locator('#demo-pill').inner_text()
         b.close()
 finally:
     srv.terminate()
 if errors:
     print('\n'.join(errors)); sys.exit(1)
-print('OK: live mode e2e (login gate, facts, version conflict, compile, uploads, search, keys, danger zone)')
+print('OK: live mode e2e (login, Brain, keys, danger zone, Approvals, AI Chat, Strategy Room, AI Team)')

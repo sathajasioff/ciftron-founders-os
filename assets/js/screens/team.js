@@ -4,7 +4,8 @@ import { agents, agentThreads, agentHistory } from '../data.js';
 
 let active = 'cs';
 
-export function render(el) {
+export function render(el, ctx = {}) {
+  if (ctx.live) return import('./team-live.js').then((m) => m.render(el, ctx));
   const draw = () => {
     const a = agents.find((x) => x.id === active);
     const msgs = agentThreads[a.id] || [];

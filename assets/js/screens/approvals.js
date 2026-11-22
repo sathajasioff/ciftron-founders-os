@@ -6,7 +6,8 @@ let view = 'pending';
 let tag = '';
 let type = '';
 
-export function render(el, ctx) {
+export function render(el, ctx = {}) {
+  if (ctx.live) return import('./approvals-live.js').then((m) => m.render(el, ctx));
   const draw = () => {
     const inView = approvals.filter((a) => (view === 'trash' ? a.status === 'trashed' : a.status === view));
     const list = inView.filter((a) => (!tag || a.tags.includes(tag)) && (!type || a.type === type));

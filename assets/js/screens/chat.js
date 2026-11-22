@@ -17,7 +17,8 @@ const room = [
   ['Strategist', 'Claude', 'Fair. Both can be true. Higher intent form plus instant reply is a cleaner test than either alone.'],
 ];
 
-export function render(el, ctx) {
+export function render(el, ctx = {}) {
+  if (ctx.live) return import('./chat-live.js').then((m) => m.render(el, ctx));
   let strategy = false;
   let attachments = 0;
   const q = ctx.params.get('q');

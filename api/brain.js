@@ -2,6 +2,7 @@
 // compile Brand DNA, and semantic search.
 import { handler, requireOwner, HttpError, audit } from './_lib/http.js';
 import { getSecret, embed, claude } from './_lib/providers.js';
+import { AGENT_SEEDS } from './_lib/chat.js';
 import {
   extractText, htmlToText, chunkText, parseJson, validateFacts, FACTS_SYSTEM, factsPrompt,
   STYLE_SYSTEM, stylePrompt, finalizeStyle, compileDna, SEED_OFFERS, ABOUT_ME,
@@ -17,6 +18,9 @@ export default handler(['POST'], async (req, body) => {
 
   // First sign-in: profile, the three offers from about_me, and about_me as a Brain source.
   if (action === 'bootstrap') {
+    // Agents are added on every bootstrap so new ones appear without wiping existing settings.
+    await one(db.from('agents').upsert(AGENT_SEEDS.map(({ phase, ...a }) => ({ ...a, owner_id: user.id, instructions: a.instructions || '', enabled: !!a.enabled, pinned: !!a.pinned })),
+      { onConflict: 'owner_id,slug', ignoreDuplicates: true }));
     const existing = await one(db.from('profiles').select('owner_id').maybeSingle());
     if (existing) return { created: false };
     await one(db.from('profiles').insert({ owner_id: user.id, full_name: 'Jasinthan Ukaananthan' }));

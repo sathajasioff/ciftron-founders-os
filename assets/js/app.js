@@ -4,8 +4,8 @@ import { approvals, owner } from './data.js';
 import { live, initLive, loginScreen, api } from './live.js';
 
 // Screens backed by real data once Supabase is configured. The rest stay demo until their phase.
-const LIVE_ROUTES = ['brain', 'connections'];
-const PHASE = { chat: 3, team: 3, approvals: 3, pipeline: 4, content: 5, funnels: 5, emails: 5, graphics: 5, programs: 5, vault: 5, goals: 5, home: 3 };
+const LIVE_ROUTES = ['brain', 'connections', 'chat', 'team', 'approvals'];
+const PHASE = { pipeline: 4, content: 5, funnels: 5, emails: 5, graphics: 5, programs: 5, vault: 5, goals: 5, home: 3 };
 
 const NAV = [
   ['nav.workspace', [['home', 'home'], ['chat', 'chat'], ['team', 'team'], ['approvals', 'inbox']]],
@@ -18,7 +18,13 @@ const ROUTES = ['home', 'chat', 'team', 'approvals', 'content', 'funnels', 'emai
 const FILE = { connections: 'settings' };
 const LABEL = { connections: 'settings' };
 
-export const pendingCount = () => approvals.filter((a) => a.status === 'pending').length;
+let livePending = 0;
+export const pendingCount = () => (live.on ? livePending : approvals.filter((a) => a.status === 'pending').length);
+async function refreshPending() {
+  if (!live.on) return;
+  const { count } = await live.sb.from('approvals').select('id', { count: 'exact', head: true }).eq('status', 'pending').is('trashed_at', null);
+  livePending = count || 0;
+}
 
 function shell() {
   $('#app').innerHTML = `<div class="shell" id="shell">
@@ -84,7 +90,8 @@ async function route() {
   try {
     const mod = cache[name] || (cache[name] = await import(`./screens/${FILE[name] || name}.js`));
     view.innerHTML = '';
-    mod.render(view, { params: new URLSearchParams(qs || ''), refreshNav: () => paintChrome(name), live: live.on && LIVE_ROUTES.includes(name) });
+    mod.render(view, { params: new URLSearchParams(qs || ''), refreshNav: async () => { await refreshPending().catch(() => {}); paintChrome(name); }, live: live.on && LIVE_ROUTES.includes(name) });
+    refreshPending().then(() => paintChrome(name)).catch(() => {});
   } catch (err) {
     console.error(err);
     view.innerHTML = `<div class="empty"><h2>Something went wrong</h2><p class="mono">${esc(err.message)}</p></div>`;

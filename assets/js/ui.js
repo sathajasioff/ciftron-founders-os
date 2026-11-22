@@ -53,6 +53,7 @@ export function toast(msg, opts = {}) {
   el.innerHTML = `<span>${esc(msg)}</span>${opts.undo ? `<button type="button">${t('c.undo')}</button>` : ''}`;
   if (opts.undo) el.querySelector('button').onclick = () => { opts.undo(); el.remove(); };
   root.appendChild(el);
+  while (root.children.length > 3) root.firstElementChild.remove();
   setTimeout(() => el.remove(), opts.ms || 4200);
 }
 
@@ -118,3 +119,27 @@ export const marks = (s) => esc(s).replace(/\[(.+?)\]/g, '<span class="placehold
 export const toggleHtml = (checked, attrs = '') => `<label class="toggle"><input type="checkbox" ${checked ? 'checked' : ''} ${attrs}><span></span></label>`;
 
 export const head = (title, sub = '', actions = '', eyebrow = '') => `<div class="page-head"><div>${eyebrow ? `<div class="eyebrow" style="margin-bottom:6px">${eyebrow}</div>` : ''}<h1>${esc(title)}</h1>${sub ? `<p>${esc(sub)}</p>` : ''}</div>${actions ? `<div class="row wrap">${actions}</div>` : ''}</div>`;
+
+// Light Markdown for AI replies: paragraphs, bullet and numbered lists, bold, placeholders, saved-draft chips.
+export function md(text) {
+  const inline = (s) => esc(s)
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+    .replace(/\[Saved to Approvals: (.+?)\]/g, '<a class="chip accent" href="#approvals" style="text-decoration:none">Saved to Approvals: $1</a>')
+    .replace(/\[([A-Z][A-Z \-]{2,40})\]/g, '<span class="placeholder">[$1]</span>');
+  const out = [];
+  let list = null;
+  for (const line of String(text || '').split('\n')) {
+    const b = line.match(/^\s*[-*•]\s+(.*)/), n = line.match(/^\s*\d+[.)]\s+(.*)/);
+    if (b || n) {
+      const tag = b ? 'ul' : 'ol';
+      if (!list || list.tag !== tag) { if (list) out.push(`</${list.tag}>`); list = { tag }; out.push(`<${tag}>`); }
+      out.push(`<li>${inline((b || n)[1])}</li>`);
+      continue;
+    }
+    if (list) { out.push(`</${list.tag}>`); list = null; }
+    if (/^#{1,4}\s/.test(line)) out.push(`<p style="margin:8px 0 4px"><b>${inline(line.replace(/^#+\s/, ''))}</b></p>`);
+    else if (line.trim()) out.push(`<p style="margin:0 0 6px">${inline(line)}</p>`);
+  }
+  if (list) out.push(`</${list.tag}>`);
+  return out.join('');
+}

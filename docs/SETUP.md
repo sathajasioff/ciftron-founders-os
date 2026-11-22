@@ -60,3 +60,16 @@ Each is tested when you save. Other connections can wait for their phase.
 ## Costs
 
 Embeddings with text-embedding-3-small are about 0.02 USD per million tokens, so a 100-page PDF costs well under a cent. Each "Propose facts" is one Claude call on up to about 60,000 characters of the source.
+
+# Phase 3 update (AI Chat, AI Team, Approvals)
+
+1. In Supabase **SQL Editor**, run `supabase/migrations/20261122000003_agents.sql`. It is short and safe to run once.
+2. Reload the OS. On load it adds the Chief of Staff and Content Strategist agents (and the later agents, switched off).
+3. Credits: chat uses your **Anthropic** key. Brain search and the Strategy Room challenger use **OpenAI**. If OpenAI has no credits, chat still works without Brain search and the challenger falls back to Claude.
+4. Optional Vercel env vars: `ANTHROPIC_MODEL` (default `claude-sonnet-5-5`) and `OPENAI_MODEL` (default `gpt-6.1-sol`).
+
+How it works:
+- Every message loads the active Brand DNA and the closest Brain passages, shown as source cards.
+- Finished deliverables (hooks, scripts, carousels, ad copy, emails) are saved to **Approvals** automatically. Nothing is published or sent.
+- Chief of Staff routes content work to the Content Strategist, which works in its own thread.
+- Approving a Content draft creates a card on the Content board (the board goes live in Phase 5). Edits are marked as yours.
