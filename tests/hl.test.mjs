@@ -87,3 +87,20 @@ test('Meta: leads use the largest lead action type, CPL and previous week', () =
   assert.equal(s.cpl, 14.2); assert.equal(s.leads, 14); assert.deepEqual(s.previous, { spend: 160, leads: 10, cpl: 16 });
   assert.deepEqual(s.campaigns.map((c) => [c.name, c.cpl]), [['Big', 12.77], ['Small', null]]);
 });
+
+test('product, course and funnel bundle writes', () => {
+  const p = buildWrite('product', { name: 'Lead Gen', price: 497, cadence: 'month', currency: 'USD' }, { locationId: 'L1' });
+  assert.equal(p.steps.length, 2);
+  assert.deepEqual(p.steps[0].body, { name: 'Lead Gen', locationId: 'L1', productType: 'SERVICE', availableInStore: false });
+  assert.equal(p.steps[1].path, '/products/{productId}/price'); assert.equal(p.steps[1].scope, 'products/prices.write');
+  assert.deepEqual(p.steps[1].body.recurring, { interval: 'month', intervalCount: 1 }); assert.equal(p.steps[1].body.amount, 497);
+  assert.equal(buildWrite('product', { name: 'Free', price: 0 }, { locationId: 'L1' }).steps.length, 1);
+  const c = buildWrite('course', { program: { name: 'GHL Bootcamp', description: 'x', modules: [{ title: 'M1', lessons: [{ title: 'L1', summary: 's' }] }] } }, { locationId: 'L1' });
+  assert.equal(c.path, '/courses/courses-exporter/public/import'); assert.equal(c.scope, 'courses.write');
+  const cat = c.body.products[0].categories[0];
+  assert.equal(cat.visibility, 'draft'); assert.equal(cat.posts[0].visibility, 'draft'); assert.equal(cat.posts[0].contentType, 'video');
+  assert.throws(() => buildWrite('course', { program: { name: 'x', modules: [] } }, { locationId: 'L1' }), /module/);
+  const b = buildWrite('funnel_bundle', { funnelName: 'Review call', product: { name: 'Lead Gen', price: 497, cadence: 'month' }, emails: [{ subject: 'Booked', body: 'Hi NAME' }], customValues: { OS_order_url: 'https://x' } }, { locationId: 'L1' });
+  assert.deepEqual(b.steps.map((s) => s.path), ['/products/', '/products/{productId}/price', '/emails/locations/L1/templates', '/locations/L1/customValues']);
+  assert.throws(() => buildWrite('funnel_bundle', { funnelName: 'x', customValues: { company: 'bad' } }, { locationId: 'L1' }), /OS_/);
+});

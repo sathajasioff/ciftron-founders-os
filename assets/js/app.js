@@ -4,18 +4,18 @@ import { approvals, owner } from './data.js';
 import { live, initLive, loginScreen, api } from './live.js';
 
 // Screens backed by real data once Supabase is configured. The rest stay demo until their phase.
-const LIVE_ROUTES = ['brain', 'connections', 'chat', 'team', 'approvals', 'pipeline', 'home'];
-const PHASE = { content: 5, funnels: 5, emails: 5, graphics: 5, programs: 5, vault: 5, goals: 5 };
+const LIVE_ROUTES = ['brain', 'connections', 'chat', 'team', 'approvals', 'pipeline', 'home', 'content', 'emails', 'funnels', 'graphics', 'vault', 'goals', 'programs'];
+const PHASE = {};
 
 const NAV = [
-  ['nav.workspace', [['home', 'home'], ['chat', 'chat'], ['team', 'team'], ['approvals', 'inbox']]],
+  ['nav.workspace', [['home', 'sparkle'], ['chat', 'chat'], ['team', 'team'], ['approvals', 'inbox']]],
   ['nav.create', [['content', 'play'], ['funnels', 'funnel'], ['emails', 'mail'], ['graphics', 'image'], ['programs', 'book']]],
   ['nav.knowledge', [['brain', 'brain'], ['vault', 'vault']]],
   ['nav.crm', [['pipeline', 'kanban'], ['goals', 'target']]],
   ['nav.system', [['connections', 'plug']]],
 ];
 const ROUTES = ['home', 'chat', 'team', 'approvals', 'content', 'funnels', 'emails', 'graphics', 'programs', 'brain', 'vault', 'pipeline', 'goals', 'connections'];
-const FILE = { connections: 'settings' };
+const FILE = { connections: 'settings', home: 'jarvis' };
 const LABEL = { connections: 'settings' };
 
 let livePending = 0;

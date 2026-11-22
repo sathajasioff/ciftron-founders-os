@@ -15,7 +15,8 @@ const page = (f, o) => ({
   cta: 'Book my review call',
 });
 
-export function render(el) {
+export function render(el, ctx = {}) {
+  if (ctx.live) return import('./funnels-live.js').then((m) => m.render(el, ctx));
   const draw = () => {
     const f = funnels.find((x) => x.id === sel);
     const o = offers.find((x) => x.id === f.offer);

@@ -6,7 +6,8 @@ let tab = 'generate';
 const palettes = [['Core', ['#111111', '#F5F5F3', '#C8F36B', '#A2A2A2']], ['Light', ['#FFFFFF', '#F5F5F3', '#111111', '#C8F36B']]];
 const fonts = [['Space Grotesk', 'DM Sans', 'Primary pair (verified from engine.ciftron.com)'], ['Manrope', 'Inter', 'Alternate pair from brief']];
 
-export function render(el) {
+export function render(el, ctx = {}) {
+  if (ctx.live) return import('./graphics-live.js').then((m) => m.render(el, ctx));
   const draw = () => {
     el.innerHTML = `
       ${head(t('graphics.title'), t('graphics.sub'), `<button class="btn" id="dl">${icon('download')} ${t('c.download')}</button>`)}

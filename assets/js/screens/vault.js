@@ -2,7 +2,8 @@ import { t } from '../i18n.js';
 import { head, icon, esc, toast, modal } from '../ui.js';
 import { vault, approvals } from '../data.js';
 
-export function render(el, ctx) {
+export function render(el, ctx = {}) {
+  if (ctx.live) return import('./vault-live.js').then((m) => m.render(el, ctx));
   const draw = () => {
     el.innerHTML = `
       ${head(t('vault.title'), t('vault.sub'), `<button class="btn btn-primary" id="add">${icon('plus')} Save example</button>`)}

@@ -2,11 +2,11 @@
 // Never reads or returns conversations.
 import { handler, requireOwner, HttpError } from './_lib/http.js';
 import { getSecret } from './_lib/providers.js';
-import { hlFetch, pickPipeline, sortStages, slimOpportunity, slimContact, boardStats, buildWrite, HL_SCOPES } from './_lib/hl.js';
+import { hlFetch, sortStages, slimContact, boardStats, buildWrite, loadBoard, HL_SCOPES } from './_lib/hl.js';
 
 export const config = { maxDuration: 30 };
 
-async function context(user, db, admin) {
+export async function hlContext(user, db, admin) {
   const token = await getSecret(admin, user.id, 'highlevel', 'private_integration_token');
   const { data: conn } = await db.from('connections').select('config').eq('provider', 'highlevel').maybeSingle();
   const locationId = conn?.config?.location_id;
@@ -14,23 +14,9 @@ async function context(user, db, admin) {
   return { token, locationId };
 }
 
-async function loadBoard(token, locationId, pipelineId) {
-  const { pipelines = [] } = await hlFetch(token, '/opportunities/pipelines', { query: { locationId }, scope: 'opportunities.readonly' });
-  const pipeline = pickPipeline(pipelines, pipelineId);
-  if (!pipeline) return { pipelines: [], pipeline: null, stages: [], opportunities: [] };
-  const stages = sortStages(pipeline);
-  const opportunities = [];
-  for (let page = 1; page <= 5; page++) {
-    const r = await hlFetch(token, '/opportunities/search', { query: { locationId, pipelineId: pipeline.id, status: 'all', limit: 100, page }, scope: 'opportunities.readonly' });
-    opportunities.push(...(r.opportunities || []).map(slimOpportunity));
-    if (!r.meta?.nextPage || (r.opportunities || []).length < 100) break;
-  }
-  return { pipelines: pipelines.map((p) => ({ id: p.id, name: p.name })), pipeline: { id: pipeline.id, name: pipeline.name }, stages, opportunities, truncated: opportunities.length >= 500 };
-}
-
 export default handler(['POST'], async (req, body) => {
   const { user, db, admin } = await requireOwner(req);
-  const { token, locationId } = await context(user, db, admin);
+  const { token, locationId } = await hlContext(user, db, admin);
   const action = body.action;
 
   if (action === 'board') {
@@ -82,10 +68,30 @@ export default handler(['POST'], async (req, body) => {
       if (!existing || !/^OS_/.test(existing.name)) throw new HttpError(400, 'Only custom values starting with OS_ can be changed');
     }
     const w = buildWrite(kind, input, { locationId, stages });
-    const preview = { method: w.method, url: w.path, body: w.body, summary: w.summary, warning: w.warning, scope: w.scope };
+    const preview = w.steps
+      ? { steps: w.steps.map((st) => ({ method: st.method, url: st.path, body: st.body })), summary: w.summary, warning: w.warning, scope: w.scope }
+      : { method: w.method, url: w.path, body: w.body, summary: w.summary, warning: w.warning, scope: w.scope };
     if (action === 'preview') return { preview };
-
     if (body.confirmed !== true) throw new HttpError(400, 'Confirm the preview first');
+
+    if (w.steps) {
+      // Multi-step writes run in order; each step is logged. A failure stops the rest.
+      const saved = {}, results = [];
+      for (const st of w.steps) {
+        const path = st.path.replace(/\{(\w+)\}/g, (_m, k) => encodeURIComponent(saved[k] || ''));
+        try {
+          const r = await hlFetch(token, path, { method: st.method, body: st.body, scope: st.scope });
+          if (st.saveAs) saved[st.saveAs] = r._id || r.product?._id || r.id || r.product?.id;
+          results.push({ path, ok: true });
+          await db.from('hl_write_log').insert({ owner_id: user.id, action: kind, target: `${w.summary} · ${st.method} ${path}`, payload: { method: st.method, url: path, body: st.body }, response: r, status: 'sent' });
+        } catch (e) {
+          await db.from('hl_write_log').insert({ owner_id: user.id, action: kind, target: `${w.summary} · ${st.method} ${path}`, payload: { method: st.method, url: path, body: st.body }, response: { error: e.message }, status: 'failed' });
+          throw new HttpError(e.status || 502, `Stopped after ${results.length} of ${w.steps.length} steps: ${e.message}`, { done: results.length });
+        }
+      }
+      return { ok: true, id: saved.productId || null, summary: w.summary, steps: results.length };
+    }
+
     let response, status = 'sent';
     try {
       response = await hlFetch(token, w.path, { method: w.method, body: w.body, scope: w.scope });

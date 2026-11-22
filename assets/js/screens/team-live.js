@@ -3,7 +3,7 @@ import { t } from '../i18n.js';
 import { head, icon, esc, toast, md, modal, toggleHtml, $ } from '../ui.js';
 import { live, api, q, versionedUpdate } from '../live.js';
 
-const ACTIVE = ['chief-of-staff', 'content-strategist'];
+const ACTIVE = ['chief-of-staff', 'content-strategist', 'researcher', 'copywriter', 'designer', 'funnel-builder', 'email-writer', 'crm-assistant', 'marketing-analyst'];
 const ini = (n) => n.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 const st = { slug: 'content-strategist' };
 
@@ -28,13 +28,13 @@ export async function render(el, ctx) {
           <div class="avatar ai">${ini(x.name)}</div><div class="grow"><div class="small" style="font-weight:600">${esc(x.name)} ${x.pinned ? '<span class="chip accent" style="margin-left:4px">Pinned</span>' : ''}</div>
           <div class="xs muted">${ACTIVE.includes(x.slug) ? esc(x.role || '') : 'Arrives in Phase 5'}</div></div>${x.enabled ? '<span class="dot on"></span>' : ''}</div>`).join('')}</div>
         <div class="mcol convo" style="display:flex;flex-direction:column">
-          <div class="row between" style="padding:12px 16px;border-bottom:1px solid var(--border)"><div><b>${esc(a.name)}</b><div class="xs muted">${usable ? (a.slug === 'chief-of-staff' ? 'Routes work to the Content Strategist' : 'Drafts go to Approvals') : 'Arrives in Phase 5'}</div></div>
+          <div class="row between" style="padding:12px 16px;border-bottom:1px solid var(--border)"><div><b>${esc(a.name)}</b><div class="xs muted">${usable ? (a.slug === 'chief-of-staff' ? 'Routes work to the right specialist' : ['crm-assistant', 'marketing-analyst'].includes(a.slug) ? 'Reads live HighLevel and Meta numbers' : 'Drafts go to Approvals') : 'Arrives in Phase 5'}</div></div>
             ${thread ? `<button class="btn btn-sm btn-ghost" id="newt">${icon('plus')} New thread</button>` : ''}</div>
           <div style="flex:1;overflow-y:auto;padding:16px" id="mscroll">
             ${msgs.length ? msgs.map((m) => m.role === 'user' ? `<div class="msg me"><div class="avatar">${m.content.startsWith('From Chief of Staff:') ? 'CS' : 'JU'}</div><div class="bubble">${esc(m.content)}</div></div>`
               : m.role === 'system' ? `<div class="notice neutral small" style="margin:0 0 14px">${icon('info')}<span>${esc(m.content)}</span></div>`
               : `<div class="msg"><div class="avatar ai">${ini(a.name)}</div><div class="bubble">${md(m.content)}</div></div>`).join('')
-              : `<div class="empty small">${usable ? (a.slug === 'chief-of-staff' ? 'Tell me what you need. I route content work to the Content Strategist.' : 'Ask for hooks, scripts, carousels, captions, ad copy or a content plan. English or Quebec French.') : 'This agent is built in Phase 5.'}</div>`}
+              : `<div class="empty small">${usable ? (a.slug === 'chief-of-staff' ? 'Tell me what you need. I route it to the right specialist.' : esc(a.role || '') + '. English or Quebec French.') : 'This agent is built in Phase 5.'}</div>`}
             ${busy ? `<div class="msg"><div class="avatar ai">${ini(a.name)}</div><div class="bubble muted small">Working...</div></div>` : ''}
           </div>
           <div style="padding:12px;border-top:1px solid var(--border)"><div class="composer row" style="padding:6px 8px">
@@ -56,7 +56,7 @@ export async function render(el, ctx) {
       </div>`;
     el.querySelectorAll('[data-agent]').forEach((r) => r.onclick = async () => { st.slug = r.dataset.agent; await loadThread(); draw(); });
     const sc = $('#mscroll', el); sc.scrollTop = sc.scrollHeight;
-    $('#aen', el).onchange = async (e) => { const r = await versionedUpdate('agents', a, { enabled: e.target.checked }).catch((x) => toast(x.message)); if (r?.conflict) toast('Changed elsewhere. Reloaded.'); await loadAgents(); draw(); };
+    $('#aen', el).onchange = async (e) => {  const r = await versionedUpdate('agents', a, { enabled: e.target.checked }).catch((x) => toast(x.message)); if (r?.conflict) toast('Changed elsewhere. Reloaded.'); await loadAgents(); draw(); };
     const ed = $('#aedit', el); if (ed) ed.onclick = () => editInstructions(a);
     const nt = $('#newt', el); if (nt) nt.onclick = () => { thread = null; msgs = []; draw(); };
     $('#asend', el).onclick = send;

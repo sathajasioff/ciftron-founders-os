@@ -121,3 +121,48 @@ The OS never edits campaigns, budgets or ads.
 
 - `HL_API_VERSION` (default `v3`; the OS falls back to `2021-07-28` automatically if HighLevel rejects it)
 - `META_API_VERSION` (default `v26.0`)
+
+# Phase 5 update (Jarvis and the creation studio)
+
+1. **Required:** in Supabase SQL Editor, run `supabase/migrations/20261122000004_studio.sql`.
+2. Reload the OS. All nine AI Team agents switch on with their instructions (any you already edited are kept).
+3. Add the keys for the parts you want, in **Connections and Settings**:
+
+| Key | Used by |
+|---|---|
+| Anthropic (already added) | Jarvis, every module's AI drafts |
+| OpenAI | Brain search, Strategy Room challenger |
+| OpenRouter | Graphics image generation (any image model it lists) |
+| Apify | Instagram research in Content |
+| YouTube | YouTube research in Content |
+| ElevenLabs (optional) | Jarvis voice. Without it, Jarvis uses the browser's voice. |
+
+4. **New HighLevel write scopes** (only for the actions you want; each is previewed and confirmed):
+   - `products.write` and `products/prices.write`: send an offer's product and monthly price with a funnel
+   - `courses.write`: send a program as a draft course (all modules and lessons stay draft)
+
+## Jarvis
+
+- Jarvis is the home screen. Type in the command bar, tap a quick prompt, press **Talk**, or tap the core.
+- Voice input uses the browser's speech recognition (Chrome, Edge or Safari). The first time, allow the microphone.
+- Jarvis reads Brand DNA plus live HighLevel, Meta, Approvals, Content and Goals data, and answers in one to three spoken sentences. It cannot change anything.
+- No transcript is shown or saved. Typed questions show only the latest answer.
+- **Hold drafting agents** turns off every agent except the Chief of Staff until you resume them.
+
+## Every AI draft still goes through Approvals
+
+| Module | What lands in Approvals | What approving does |
+|---|---|---|
+| Content | Remixes and agent drafts | Creates a Content card |
+| Emails | Generated sequences | Unlocks "Save as HighLevel template" |
+| Funnels | Each built or revised version | Unlocks "Send products, media and email templates to HighLevel" |
+| Graphics | Each generated or edited image | Marks that version approved |
+| Programs | AI program proposals | Builds the program board exactly as proposed |
+| Vault | Briefs (labeled inspiration) | Creates a Content card; never a Brand DNA fact |
+
+Goals are not drafts: the AI only turns your sentence into a measurable target, which you can edit.
+
+## Optional Vercel env vars
+
+- `OPENROUTER_IMAGE_MODEL` (default `google/gemini-2.5-flash-image`; you can also pick a model per image in Graphics)
+- `ELEVENLABS_VOICE_ID` and `ELEVENLABS_MODEL` (default `eleven_multilingual_v2`, which also speaks French)

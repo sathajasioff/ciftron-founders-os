@@ -15,7 +15,8 @@ function measurable(raw) {
   return { id: 'gl' + Date.now(), raw, target, current: 0, total: +num || 100, unit, source, checklist: [{ t: 'Confirm target number and date', done: false }, { t: 'Pick 3 actions (AI drafts in Phase 5)', done: false }] };
 }
 
-export function render(el) {
+export function render(el, ctx = {}) {
+  if (ctx.live) return import('./goals-live.js').then((m) => m.render(el, ctx));
   const draw = () => {
     el.innerHTML = `
       ${head(t('goals.title'), t('goals.sub'))}

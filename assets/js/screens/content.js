@@ -5,7 +5,8 @@ import { contentItems, contentStages, creators, outliers, learningSignals, appro
 let tab = 'board';
 const fmtDate = (d) => new Date(d + 'T12:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
-export function render(el, ctx) {
+export function render(el, ctx = {}) {
+  if (ctx.live) return import('./content-live.js').then((m) => m.render(el, ctx));
   const draw = () => {
     el.innerHTML = `
       ${head(t('content.title'), t('content.sub'), `<button class="btn btn-primary" id="new-card">${icon('plus')} ${t('c.new')}</button>`)}

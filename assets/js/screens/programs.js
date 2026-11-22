@@ -4,7 +4,8 @@ import { programs, approvals } from '../data.js';
 
 let sel = 'pr1';
 
-export function render(el, ctx) {
+export function render(el, ctx = {}) {
+  if (ctx.live) return import('./programs-live.js').then((m) => m.render(el, ctx));
   const draw = () => {
     const p = programs.find((x) => x.id === sel);
     el.innerHTML = `

@@ -4,8 +4,12 @@ import { handler, requireOwner, HttpError } from './_lib/http.js';
 import { getSecret, embed, claude, gpt, OPENAI_MODEL, ANTHROPIC_MODEL } from './_lib/providers.js';
 import { extractText } from './_lib/brain.js';
 import {
-  systemPrompt, CHALLENGER_SYSTEM, VERDICT_SYSTEM, cleanCopy, extractDrafts, extractHandoff, linkDrafts, threadTitle, ACTIVE_AGENTS,
+  systemPrompt, CHALLENGER_SYSTEM, VERDICT_SYSTEM, cleanCopy, extractDrafts, extractHandoff, linkDrafts, threadTitle, ACTIVE_AGENTS, CONTEXT_AGENTS,
 } from './_lib/chat.js';
+import { businessContext } from './_lib/context.js';
+import { signalsBlock } from './_lib/studio.js';
+
+const CONTENT_AGENTS = ['content-strategist', 'copywriter', 'designer', 'researcher'];
 
 export const config = { maxDuration: 60 };
 
@@ -23,6 +27,15 @@ export default handler(['POST'], async (req, body) => {
 
   const anthropicKey = await getSecret(admin, user.id, 'anthropic', 'api_key');
   const warnings = [];
+
+  // Jarvis: short spoken answers from live context. Nothing is stored as a transcript.
+  if (body.mode === 'jarvis') {
+    const [ctx, dnaRow] = await Promise.all([businessContext(db, admin, user.id), one(db.from('brand_dna').select('markdown').eq('is_active', true).maybeSingle())]);
+    const history = (Array.isArray(body.history) ? body.history.slice(-8) : []).map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '').slice(0, 2000) })).filter((m) => m.content);
+    while (history.length && history[0].role !== 'user') history.shift();
+    const reply = await claude(anthropicKey, { system: systemPrompt({ dna: dnaRow?.markdown, mode: 'jarvis', context: ctx.text }), messages: [...history, { role: 'user', content: message }], maxTokens: 400 });
+    return { reply: cleanCopy(reply).replace(/[*#`_]/g, '').trim() };
+  }
 
   // Agent and thread
   let agent = null;
@@ -47,6 +60,8 @@ export default handler(['POST'], async (req, body) => {
     }
   }
   if (!dnaRow) warnings.push('No Brand DNA compiled yet, so answers use only this chat.');
+  const liveCtx = agent && CONTEXT_AGENTS.includes(agent.slug) ? (await businessContext(db, admin, user.id, { meta: agent.slug !== 'crm-assistant' })).text : '';
+  const sig = agent && CONTENT_AGENTS.includes(agent.slug) ? signalsBlock(await one(db.from('learning_signals').select('signal').eq('state', 'on'))) : '';
 
   // Attachments become content blocks for Claude.
   const blocks = [];
@@ -115,7 +130,7 @@ export default handler(['POST'], async (req, body) => {
     const verdict = cleanCopy(await claude(anthropicKey, { system: VERDICT_SYSTEM, prompt: `${roomPrompt}\n\nChallenger's critique:\n${challenger}`, maxTokens: 700 }));
     await say('verdict', verdict, { model: ANTHROPIC_MODEL });
   } else {
-    const raw = await claude(anthropicKey, { system: systemPrompt({ dna: dnaRow?.markdown, agent, brainHits, warnings }), messages, maxTokens: 3000 });
+    const raw = await claude(anthropicKey, { system: systemPrompt({ dna: dnaRow?.markdown, agent, brainHits, warnings, context: liveCtx, signals: sig }), messages, maxTokens: 3000 });
     let { handoff, reply } = agent?.slug === 'chief-of-staff' ? extractHandoff(raw) : { handoff: null, reply: raw };
     const { drafts, reply: r2 } = extractDrafts(reply);
     const saved = await saveDrafts(drafts, agent?.name || 'AI Chat');

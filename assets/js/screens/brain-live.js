@@ -162,8 +162,8 @@ export async function render(el) {
       onMount: (ov, close) => {
         let kind = 'file';
         ov.querySelectorAll('[data-k]').forEach((b) => b.onclick = () => { kind = b.dataset.k; ov.querySelectorAll('[data-k]').forEach((x) => x.classList.toggle('active', x === b)); ov.querySelectorAll('[data-p]').forEach((p) => p.classList.toggle('hidden', p.dataset.p !== kind)); });
-        ov.querySelector('[data-ok]').onclick = async (ev) => {
-          const btn = ev.currentTarget, prog = ov.querySelector('#uprog');
+        ov.querySelector('[data-ok]').onclick = async (ev) => { const __b = ev.currentTarget; 
+          const btn = __b, prog = ov.querySelector('#uprog');
           const ws = ov.querySelector('#uws').checked, auto = ov.querySelector('#uauto').checked;
           const rows = [];
           btn.disabled = true;

@@ -33,6 +33,15 @@
     },
     "api/account.js": {
       "maxDuration": 30
+    },
+    "api/studio.js": {
+      "maxDuration": 60
+    },
+    "api/chat.js": {
+      "maxDuration": 60
+    },
+    "api/voice.js": {
+      "maxDuration": 30
     }
   }
 }

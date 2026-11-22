@@ -7,7 +7,7 @@ import { hlWrite } from '../hl-ui.js';
 
 const HL_SCOPES = {
   read: ['locations.readonly', 'opportunities.readonly', 'contacts.readonly', 'products.readonly', 'funnels/funnel.readonly', 'socialplanner/account.readonly', 'locations/customValues.readonly'],
-  write: ['opportunities.write', 'contacts.write', 'socialplanner/post.write', 'emails/templates.write', 'locations/customValues.write'],
+  write: ['opportunities.write', 'contacts.write', 'socialplanner/post.write', 'emails/templates.write', 'locations/customValues.write', 'products.write', 'products/prices.write', 'courses.write'],
 };
 
 const DESC = {
@@ -15,10 +15,10 @@ const DESC = {
   meta_ads: 'Read-only Marketing API: campaigns, spend, leads and cost per lead. Needs only the ads_read permission.',
   anthropic: 'Claude models for chat, agents, fact proposals and the style guide.',
   openai: 'Embeddings for Brain search (text-embedding-3-small) and GPT for the Strategy Room.',
-  openrouter: 'Image generation and extra models.',
-  elevenlabs: 'Voice for Jarvis.',
-  apify: 'Public social research for the Content module.',
-  youtube: 'Public channel stats for research.',
+  openrouter: 'Image generation for Graphics.',
+  elevenlabs: 'Voice for Jarvis. Voice ID is optional; a default voice is used if empty.',
+  apify: 'Instagram research for Content (public posts only).',
+  youtube: 'YouTube research for Content (public stats only).',
   mcp: 'Connect another MCP server.',
 };
 const FIELD_LABEL = { private_integration_token: 'Private Integration token', location_id: 'Location ID', access_token: 'System user access token', ad_account_id: 'Ad account ID (act_...)', api_key: 'API key', api_token: 'API token', voice_id: 'Voice ID', token: 'Token', server_url: 'Server URL' };
@@ -85,8 +85,8 @@ export async function render(el) {
     el.querySelectorAll('[data-rm]').forEach((b) => b.onclick = () => remove(providers.find((x) => x.id === b.dataset.rm)));
     el.querySelectorAll('[data-th]').forEach((b) => b.onclick = () => { setTheme(b.dataset.th); draw(); });
     el.querySelectorAll('[data-l]').forEach((b) => b.onclick = () => { setLang(b.dataset.l); paintChrome('connections'); draw(); });
-    $('#exp', el).onclick = async (ev) => {
-      const b = ev.currentTarget; b.disabled = true;
+    $('#exp', el).onclick = async (ev) => { const __b = ev.currentTarget; 
+      const b = __b; b.disabled = true;
       try {
         const data = await api('account', { body: { action: 'export' } });
         const a = document.createElement('a');
@@ -115,8 +115,8 @@ export async function render(el) {
         <div class="notice neutral xs" style="margin-top:12px">${icon('info')}<span>Sent once over HTTPS to a server function, encrypted with AES-256-GCM, and stored server-side. The browser never reads it back.</span></div>
         ${scopes ? `<div class="notice info small" style="margin-top:10px">${icon('info')}<span>${scopes}</span></div>` : ''}`,
       foot: `<button class="btn" data-close>${t('c.cancel')}</button><button class="btn btn-primary" data-ok>${c.phase ? t('c.save') : 'Save and test'}</button>`,
-      onMount: (ov, close) => { ov.querySelector('[data-ok]').onclick = async (ev) => {
-        const b = ev.currentTarget;
+      onMount: (ov, close) => { ov.querySelector('[data-ok]').onclick = async (ev) => { const __b = ev.currentTarget; 
+        const b = __b;
         const values = Object.fromEntries(fields.map(([f]) => [f, ov.querySelector(`#k_${f}`).value]));
         if (!c.connected && c.fields.secret.some((f) => !values[f].trim())) return toast('Fill in every field');
         b.disabled = true;

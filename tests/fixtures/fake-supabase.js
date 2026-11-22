@@ -1,9 +1,10 @@
 // Minimal in-browser stand-in for @supabase/supabase-js, used only by tests/live_e2e.py.
 // Supports the query shapes the app uses and mimics the version_conflict trigger.
-const VERSIONED = ['offers', 'brain_facts', 'approvals', 'agents'];
+const VERSIONED = ['offers', 'brain_facts', 'approvals', 'agents', 'content_items', 'email_sequences', 'funnels', 'programs', 'goals'];
 const now = () => new Date().toISOString();
 const uid = () => crypto.randomUUID();
 const OWNER = '11111111-1111-1111-1111-111111111111';
+const nowIso = () => new Date().toISOString();
 const old = '2026-11-01T10:00:00Z';
 
 const db = (window.__FAKE_DB__ ||= {
@@ -27,7 +28,17 @@ const db = (window.__FAKE_DB__ ||= {
   ],
   threads: [],
   messages: [],
-  content_items: [],
+  content_items: [{ id: 'ci1', owner_id: OWNER, title: 'Follow-up speed Reel', format: 'Short video', stage: 'Idea', publish_date: '2026-11-24', hook: 'Your follow-up is slow', notes: '', tasks: { script: false, film: false, edit: false, thumbnail: false, upload: false }, language: 'en', authored_by: 'ai', version: 1, created_at: old, updated_at: old }],
+  research_creators: [{ id: 'rc1', owner_id: OWNER, platform: 'Instagram', handle: '@sample.coach', is_mine: false, median_views: 1800, created_at: old }],
+  research_posts: [{ id: 'rp1', owner_id: OWNER, creator_id: 'rc1', external_id: 'x', title: 'The 3 texts I send every new lead', format: 'Reel', views: 21400, outlier_score: 11.89, created_at: old, research_creators: { handle: '@sample.coach', platform: 'Instagram' } }],
+  learning_signals: [{ id: 'ls1', owner_id: OWNER, key: 'type_up:Hooks', signal: 'You approve most Hooks drafts (4 of 5).', evidence: '5 decisions', weight: 'medium', state: 'on', updated_at: old }],
+  email_sequences: [{ id: 'es1', owner_id: OWNER, name: 'Call reminders', sequence_type: 'reminder', language: 'en', status: 'draft', emails: [{ day: 'Immediately', subject: 'Your call is booked', preview: 'p', body: 'Hi NAME' }], version: 1, created_at: old, updated_at: old }],
+  funnels: [{ id: 'fn1', owner_id: OWNER, name: 'Meta Ads review call', funnel_type: 'Appointment booking funnel', offer_id: 'o1', brief: { audience: 'Brokers' }, order_form_url: 'https://link.example/book', current_version: 1, status: 'draft', version: 1, created_at: old, updated_at: old }],
+  funnel_versions: [{ id: 'fv1', owner_id: OWNER, funnel_id: 'fn1', version_no: 1, status: 'approved', note: 'Built from brief', created_at: old, output: { headline: 'Find your lead leaks', subheadline: 'A 15-minute review', sections: [{ heading: 'What we check', body: 'Ad, form, follow-up', bullets: ['Speed'] }], cta: 'Book my call', faq: [], qualification_questions: ['Ad spend?'], image_prompts: ['hero'], emails: [{ subject: 'Booked', preview: 'p', body: 'Hi NAME' }], hl_setup_notes: ['Create the funnel'] } }],
+  graphics: [], graphic_versions: [], brand_board: [],
+  vault_items: [{ id: 'v1', owner_id: OWNER, kind: 'url', title: 'Clean pricing page', url: 'https://example.com', note: 'Layout', created_at: old }],
+  goals: [], goal_items: [],
+  programs: [], program_modules: [], program_lessons: [],
   approvals: [
     { id: 'ap1', owner_id: OWNER, type: 'Hooks', title: '5 Reel hooks: mortgage follow-up', payload: { body: '1. Your leads are not cold. Your follow-up is slow.\n2. [PROOF NEEDED]' }, tags: ['mortgage'], language: 'en', source_agent: 'Content Strategist', target_module: 'content', status: 'pending', trashed_at: null, authored_by: 'ai', version: 1, created_at: old, updated_at: old },
     { id: 'ap2', owner_id: OWNER, type: 'Ad copy', title: 'Prêt privé: 6 variations', payload: { body: 'Votre banque a dit non?' }, tags: ['meta ads'], language: 'fr-qc', source_agent: 'Content Strategist', target_module: 'content', status: 'pending', trashed_at: null, authored_by: 'ai', version: 1, created_at: '2026-11-03T10:00:00Z', updated_at: old },
@@ -85,7 +96,7 @@ export function createClient() {
   return {
     from: (t) => new Query(t),
     rpc: async () => ({ data: [], error: null }),
-    storage: { from: () => ({ upload: async (p) => { window.__FAKE_CALLS__.push(['upload', p]); return { data: { path: p }, error: null }; }, remove: async () => ({ data: [], error: null }) }) },
+    storage: { from: () => ({ upload: async (p) => { window.__FAKE_CALLS__.push(['upload', p]); return { data: { path: p }, error: null }; }, remove: async () => ({ data: [], error: null }), createSignedUrl: async () => ({ data: { signedUrl: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=' } }) }) },
     auth: {
       getSession: async () => ({ data: { session } }),
       onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),

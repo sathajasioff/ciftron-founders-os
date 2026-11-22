@@ -44,3 +44,16 @@ export function summarizeInsights(acct, campaigns, prev) {
     }).sort((a, b) => b.spend - a.spend),
   };
 }
+
+const RANGES = ['today', 'yesterday', 'last_7d', 'last_14d', 'last_30d', 'this_month', 'last_month'];
+const prevWeek = () => { const d = (n) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10); return { since: d(14), until: d(8) }; };
+
+export async function metaSummary(token, account, range = 'last_7d') {
+  if (!RANGES.includes(range)) range = 'last_7d';
+  const [acct, campaigns, prev] = await Promise.all([
+    metaFetch(token, `/${account}/insights`, { fields: 'spend,impressions,clicks,actions,cost_per_action_type', date_preset: range, level: 'account' }),
+    metaFetch(token, `/${account}/insights`, { fields: 'campaign_id,campaign_name,spend,impressions,clicks,actions', date_preset: range, level: 'campaign', limit: 50 }),
+    range === 'last_7d' ? metaFetch(token, `/${account}/insights`, { fields: 'spend,actions', time_range: JSON.stringify(prevWeek()), level: 'account' }).catch(() => null) : null,
+  ]);
+  return { range, account, ...summarizeInsights(acct, campaigns, prev) };
+}

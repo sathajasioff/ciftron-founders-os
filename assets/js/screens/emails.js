@@ -5,7 +5,8 @@ import { emailTemplates, sampleSequence, offers } from '../data.js';
 let sel = 'reminder';
 let open = 1;
 
-export function render(el) {
+export function render(el, ctx = {}) {
+  if (ctx.live) return import('./emails-live.js').then((m) => m.render(el, ctx));
   const draw = () => {
     const tpl = emailTemplates.find((x) => x.id === sel);
     el.innerHTML = `

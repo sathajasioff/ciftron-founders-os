@@ -36,6 +36,7 @@ export async function render(el, ctx) {
     $('#flang', el).onchange = (e) => { ui.lang = e.target.value; draw(); };
     el.querySelectorAll('[data-tagf]').forEach((b) => b.onclick = () => { ui.tag = ui.tag === b.dataset.tagf ? '' : b.dataset.tagf; draw(); });
     el.querySelectorAll('[data-act]').forEach((b) => b.onclick = () => act(items.find((x) => x.id === b.dataset.id), b.dataset.act));
+    el.querySelectorAll('[data-thumb]').forEach(async (img) => { const { data } = await live.sb.storage.from('brain').createSignedUrl(img.dataset.thumb, 3600); if (data?.signedUrl) img.src = data.signedUrl; });
   };
 
   const update = async (a, patch) => {
@@ -47,7 +48,7 @@ export async function render(el, ctx) {
 
   async function act(a, what) {
     try {
-      if (what === 'edit') return edit(a);
+      if (what === 'edit') return a.type === 'Graphic' || a.type === 'Program' ? (location.hash = '#' + a.target_module) : edit(a);
       if (what === 'hl-social') return sendSocial(a);
       if (what === 'hl-email') return sendEmail(a);
       if (what === 'approve') {
@@ -57,9 +58,27 @@ export async function render(el, ctx) {
           const body = a.payload?.body || '';
           card = (await q(live.sb.from('content_items').insert({ owner_id: live.user.id, title: a.title, format: FORMAT[a.type] || a.type, language: a.language, stage: 'Idea', hook: body.split('\n').find((l) => l.trim())?.replace(/^\s*\d+[.)]\s*/, '').slice(0, 200) || null, notes: body, approval_id: a.id, authored_by: a.authored_by }).select('id')))[0];
         }
+        let undoModule = null;
+        if (a.target_module === 'emails' && a.payload?.sequence_id) {
+          const setSeq = async (status) => { const sq = (await q(live.sb.from('email_sequences').select('id, version').eq('id', a.payload.sequence_id)))[0]; if (sq) await versionedUpdate('email_sequences', sq, { status }); };
+          await setSeq('approved'); undoModule = () => setSeq('draft');
+        }
+        if (a.target_module === 'funnels' && a.payload?.funnel_version_id) { await q(live.sb.from('funnel_versions').update({ status: 'approved' }).eq('id', a.payload.funnel_version_id)); undoModule = () => q(live.sb.from('funnel_versions').update({ status: 'draft' }).eq('id', a.payload.funnel_version_id)); }
+        if (a.target_module === 'graphics' && a.payload?.graphic_version_id) { await q(live.sb.from('graphic_versions').update({ status: 'approved' }).eq('id', a.payload.graphic_version_id)); undoModule = () => q(live.sb.from('graphic_versions').update({ status: 'draft' }).eq('id', a.payload.graphic_version_id)); }
+        if (a.target_module === 'programs' && a.payload?.program) {
+          // Approving a proposal builds the program board exactly as proposed.
+          const pr = a.payload.program;
+          const [prog] = await q(live.sb.from('programs').insert({ owner_id: live.user.id, name: pr.name, description: pr.description, stage: 'draft' }).select('id'));
+          for (const [i, m] of pr.modules.entries()) {
+            const [mod] = await q(live.sb.from('program_modules').insert({ owner_id: live.user.id, program_id: prog.id, title: m.title, sort: i }).select('id'));
+            if (m.lessons.length) await q(live.sb.from('program_lessons').insert(m.lessons.map((l, j) => ({ owner_id: live.user.id, module_id: mod.id, title: l.title, body: l.summary, sort: j }))));
+          }
+          undoModule = () => q(live.sb.from('programs').delete().eq('id', prog.id));
+        }
         if (!(await update(a, { status: 'approved' }))) return;
-        toast(`Approved. Moved to ${MODULE[a.target_module] || 'its module'}${a.target_module === 'content' ? '' : ' (opens in Phase 5)'}.`, { undo: async () => {
+        toast(`Approved. Moved to ${MODULE[a.target_module] || 'its module'}.`, { undo: async () => {
           if (card) await q(live.sb.from('content_items').delete().eq('id', card.id));
+          if (undoModule) await undoModule();
           await update(a, { status: 'pending' }); ctx.refreshNav(); draw();
         } });
       }
@@ -114,6 +133,7 @@ function card(a) {
   return `<div class="card">
     <div class="row between top"><div class="grow"><div class="row wrap" style="margin-bottom:4px"><span class="chip">${esc(a.type)}</span><span class="chip outline">→ ${esc(MODULE[a.target_module] || a.target_module || 'Content')}</span>${a.language === 'fr-qc' ? '<span class="chip info">FR-QC</span>' : ''}${a.authored_by === 'me' ? '<span class="chip accent">Edited by you</span>' : ''}</div>
       <h3>${esc(a.title)}</h3><div class="xs muted">${esc(a.source_agent || 'AI')} · ${ago(a.created_at)}${a.tags.length ? ' · ' + a.tags.map((x) => '#' + esc(x)).join(' ') : ''}</div></div></div>
+    ${a.payload?.storage_path ? `<img data-thumb="${esc(a.payload.storage_path)}" alt="" style="margin-top:12px;max-height:220px;max-width:100%;border-radius:10px;background:var(--surface-2)">` : ''}
     <div class="preview-box small" style="margin-top:12px;max-height:220px">${marks(a.payload?.body || '')}</div>
     <div class="row wrap" style="margin-top:12px">
       ${tr ? `<button class="btn btn-sm" data-act="restore" data-id="${a.id}">${t('c.restore')}</button>` : `

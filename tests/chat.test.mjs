@@ -40,10 +40,11 @@ test('systemPrompt includes Brand DNA, Brain hits, house rules and agent role', 
   assert.ok(none.includes('Not compiled yet') && !none.includes('<draft'));
 });
 
-test('agent seeds: Chief of Staff pinned, only two active in Phase 3', () => {
-  assert.deepEqual(ACTIVE_AGENTS, ['chief-of-staff', 'content-strategist']);
+test('agent seeds: Chief of Staff pinned, all nine agents built with instructions', () => {
+  assert.equal(ACTIVE_AGENTS.length, 9);
   assert.ok(AGENT_SEEDS[0].pinned && AGENT_SEEDS[0].enabled);
-  assert.ok(AGENT_SEEDS.filter((a) => a.enabled).every((a) => ACTIVE_AGENTS.includes(a.slug)));
+  assert.ok(AGENT_SEEDS.every((a) => a.instructions && a.instructions.length > 80), 'every agent has real instructions');
+  for (const a of AGENT_SEEDS.slice(1)) assert.ok(AGENT_SEEDS[0].instructions.includes(a.slug), `Chief of Staff can route to ${a.slug}`);
   assert.equal(threadTitle('  hello   world '), 'hello world');
   assert.ok(threadTitle('x'.repeat(10) + ' ' + 'y'.repeat(80)).endsWith('...'));
 });

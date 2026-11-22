@@ -22,6 +22,9 @@ export const HL_SCOPES = {
     ['socialplanner/post.write', 'Send a Social Planner post as a draft (confirmed)'],
     ['emails/templates.write', 'Save an email template (confirmed)'],
     ['locations/customValues.write', 'Create or update OS_ custom values only (confirmed)'],
+    ['products.write', 'Create a product for an offer or funnel (confirmed)'],
+    ['products/prices.write', 'Add the price to that product (confirmed)'],
+    ['courses.write', 'Send a program as a draft course (confirmed)'],
   ],
 };
 
@@ -160,7 +163,57 @@ export function buildWrite(kind, input, { locationId, stages } = {}) {
       return { method: id ? 'PUT' : 'POST', path: `/locations/${encodeURIComponent(locationId)}/customValues${id ? '/' + encodeURIComponent(id) : ''}`, scope: 'locations/customValues.write', body,
         summary: `${id ? 'Update' : 'Create'} custom value ${name}`, warning: 'Anything in HighLevel that uses this custom value will show the new text.' };
     }
+    case 'product': {
+      const name = s(input.name, 200);
+      if (!name) throw new HttpError(400, 'The product needs a name');
+      const amount = Number(input.price);
+      const steps = [{ method: 'POST', path: '/products/', scope: 'products.write', body: { name, locationId, productType: 'SERVICE', description: s(input.description, 2000) || undefined, availableInStore: false }, saveAs: 'productId', idFrom: ['_id', 'product._id', 'id'] }];
+      if (Number.isFinite(amount) && amount > 0) {
+        const recurring = input.cadence === 'month' || input.cadence === 'year';
+        steps.push({ method: 'POST', path: '/products/{productId}/price', scope: 'products/prices.write', body: { name: `${name} ${recurring ? (input.cadence === 'month' ? 'monthly' : 'yearly') : 'price'}`, type: recurring ? 'recurring' : 'one_time', currency: s(input.currency, 3) || 'USD', amount, locationId, ...(recurring ? { recurring: { interval: input.cadence, intervalCount: 1 } } : {}) } });
+      }
+      for (const st of steps) for (const k of Object.keys(st.body)) if (st.body[k] === undefined) delete st.body[k];
+      return { steps, scope: 'products.write', summary: `Product: ${name}${steps.length > 1 ? ` with ${amount} ${steps[1].body.currency}${steps[1].body.recurring ? ' per ' + input.cadence : ''}` : ''}`,
+        warning: 'Creates a product in HighLevel Payments. Check the price amount: HighLevel shows it in the currency you see here.' };
+    }
+    case 'course': {
+      const p = input.program || {};
+      if (!s(p.name, 200) || !(p.modules || []).length) throw new HttpError(400, 'The program needs a name and at least one module');
+      const body = { locationId, products: [{ title: s(p.name, 200), description: s(p.description, 2000) || s(p.name, 200), categories: (p.modules || []).slice(0, 30).map((m) => ({
+        title: s(m.title, 200), visibility: 'draft', posts: (m.lessons || []).slice(0, 50).map((l) => ({ title: s(l.title, 200), visibility: 'draft', contentType: 'video', description: s(l.summary || l.body || l.title, 5000) })),
+      })) }] };
+      return { method: 'POST', path: '/courses/courses-exporter/public/import', scope: 'courses.write', body, summary: `Draft course: ${body.products[0].title}`, warning: 'Imported as a draft course. Every module and lesson is set to draft, so nothing is visible to members until you publish it.' };
+    }
+    case 'funnel_bundle': {
+      const steps = [];
+      if (input.product?.name) steps.push(...buildWrite('product', input.product, { locationId }).steps);
+      for (const e of (input.emails || []).slice(0, 6)) {
+        const w = buildWrite('email_template', { name: `${s(input.funnelName, 80)} · ${s(e.subject, 80)}`, subject: e.subject, previewText: e.preview, body: e.body }, { locationId });
+        steps.push({ method: w.method, path: w.path, scope: w.scope, body: w.body });
+      }
+      for (const [name, value] of Object.entries(input.customValues || {})) {
+        const w = buildWrite('custom_value', { name, value }, { locationId });
+        steps.push({ method: w.method, path: w.path, scope: w.scope, body: w.body });
+      }
+      if (!steps.length) throw new HttpError(400, 'Nothing to send');
+      return { steps, scope: [...new Set(steps.map((x) => x.scope))].join(', '), summary: `Funnel "${s(input.funnelName, 80)}": ${steps.length} items`,
+        warning: 'Creates a product and price, email templates and OS_ custom values. Templates are not sent to anyone.' };
+    }
     default:
       throw new HttpError(400, 'Unknown write action');
   }
+}
+
+export async function loadBoard(token, locationId, pipelineId) {
+  const { pipelines = [] } = await hlFetch(token, '/opportunities/pipelines', { query: { locationId }, scope: 'opportunities.readonly' });
+  const pipeline = pickPipeline(pipelines, pipelineId);
+  if (!pipeline) return { pipelines: [], pipeline: null, stages: [], opportunities: [] };
+  const stages = sortStages(pipeline);
+  const opportunities = [];
+  for (let page = 1; page <= 5; page++) {
+    const r = await hlFetch(token, '/opportunities/search', { query: { locationId, pipelineId: pipeline.id, status: 'all', limit: 100, page }, scope: 'opportunities.readonly' });
+    opportunities.push(...(r.opportunities || []).map(slimOpportunity));
+    if (!r.meta?.nextPage || (r.opportunities || []).length < 100) break;
+  }
+  return { pipelines: pipelines.map((p) => ({ id: p.id, name: p.name })), pipeline: { id: pipeline.id, name: pipeline.name }, stages, opportunities, truncated: opportunities.length >= 500 };
 }

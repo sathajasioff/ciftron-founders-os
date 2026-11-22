@@ -63,7 +63,7 @@ export function loginScreen(root) {
       <button class="btn btn-primary" style="width:100%" id="go">Email me a sign-in link</button>
       <p class="small" id="msg" style="margin-top:12px" role="status"></p>
     </form></div>`;
-  root.querySelector('#login').onsubmit = async (e) => {
+  root.querySelector('#login').onsubmit = async (e) => { 
     e.preventDefault();
     const msg = root.querySelector('#msg'), btn = root.querySelector('#go');
     btn.disabled = true; msg.className = 'small muted'; msg.textContent = 'Sending...';

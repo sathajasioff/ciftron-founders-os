@@ -11,12 +11,12 @@ A private, single-owner AI command center on top of HighLevel. HighLevel is the 
 | 3 | AI Chat with Brand DNA, Approvals queue, Content Strategist agent | **Done** (run migration 003) |
 | 4 | HighLevel + Meta Ads (read-only) connections, Pipeline, confirmed writes | **Done** (scopes in `docs/SETUP.md`) |
 | 5 | Creation studio modules you confirm, remaining agents | |
-| 6 | Jarvis voice, MCP server, recurring routines | |
+| 6 | MCP server, recurring routines (Jarvis voice moved into Phase 5) | |
 | 7 | os.ciftron.com, security headers, error logging, tests | |
 
 ## Live vs demo
 
-With Supabase configured (see `docs/SETUP.md`), sign-in is required and **Home**, **AI Chat**, **AI Team**, **Approvals**, **Brain**, **Pipeline** and **Connections and Settings** use real data. Other screens show demo data with a "Phase N" tag until their phase. Without Supabase env vars (local static server, hosted demo) the whole app runs in demo mode.
+With Supabase configured (see `docs/SETUP.md`), sign-in is required and every screen uses real data. Without Supabase env vars (local static server, hosted demo) the whole app runs in demo mode.
 
 ## Phase 1: what is real and what is mocked
 
@@ -55,7 +55,7 @@ assets/js/i18n.js       EN and FR-QC strings
 assets/js/ui.js         Icons, modal, drawer, toast, confirmWrite
 assets/js/data.js       Phase 1 sample data
 assets/js/screens/*.js  One file per screen
-api/                    Vercel server functions (config, keys, brain, chat, hl, meta, account)
+api/                    Vercel server functions (config, keys, brain, chat, hl, meta, studio, voice, account)
 api/_lib/               Auth guard, AES-256-GCM, providers, Brain logic
 supabase/migrations/    Schema, RLS, storage policies
 assets/js/live.js       Supabase auth, API calls, versioned updates

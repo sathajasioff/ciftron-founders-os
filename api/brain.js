@@ -21,6 +21,12 @@ export default handler(['POST'], async (req, body) => {
     // Agents are added on every bootstrap so new ones appear without wiping existing settings.
     await one(db.from('agents').upsert(AGENT_SEEDS.map(({ phase, ...a }) => ({ ...a, owner_id: user.id, instructions: a.instructions || '', enabled: !!a.enabled, pinned: !!a.pinned })),
       { onConflict: 'owner_id,slug', ignoreDuplicates: true }));
+    // Fill instructions for agents seeded before they were built (empty instructions only; edits are kept).
+    const blank = await one(db.from('agents').select('id, slug, version').eq('instructions', ''));
+    for (const b of blank) {
+      const seed = AGENT_SEEDS.find((x) => x.slug === b.slug);
+      if (seed?.instructions) await one(db.from('agents').update({ instructions: seed.instructions, enabled: true, version: b.version + 1 }).eq('id', b.id).eq('version', b.version));
+    }
     const existing = await one(db.from('profiles').select('owner_id').maybeSingle());
     if (existing) return { created: false };
     await one(db.from('profiles').insert({ owner_id: user.id, full_name: 'Jasinthan Ukaananthan' }));

@@ -2,7 +2,7 @@
 const dict = {
   en: {
     'nav.workspace': 'Workspace', 'nav.create': 'Create', 'nav.knowledge': 'Knowledge', 'nav.crm': 'CRM and goals', 'nav.system': 'System',
-    'nav.home': 'Home', 'nav.chat': 'AI Chat', 'nav.team': 'AI Team', 'nav.approvals': 'Approvals', 'nav.content': 'Content',
+    'nav.home': 'Jarvis', 'nav.chat': 'AI Chat', 'nav.team': 'AI Team', 'nav.approvals': 'Approvals', 'nav.content': 'Content',
     'nav.funnels': 'Funnels', 'nav.emails': 'Emails', 'nav.graphics': 'Graphics', 'nav.programs': 'Programs', 'nav.brain': 'Brain',
     'nav.vault': 'Vault', 'nav.pipeline': 'Pipeline', 'nav.goals': 'Goals', 'nav.settings': 'Connections and Settings',
     'top.search': 'Search content, facts, contacts', 'top.demo': 'Demo data',
@@ -44,7 +44,7 @@ const dict = {
   },
   fr: {
     'nav.workspace': 'Espace de travail', 'nav.create': 'Créer', 'nav.knowledge': 'Savoir', 'nav.crm': 'CRM et objectifs', 'nav.system': 'Système',
-    'nav.home': 'Accueil', 'nav.chat': 'Clavardage IA', 'nav.team': 'Équipe IA', 'nav.approvals': 'Approbations', 'nav.content': 'Contenu',
+    'nav.home': 'Jarvis', 'nav.chat': 'Clavardage IA', 'nav.team': 'Équipe IA', 'nav.approvals': 'Approbations', 'nav.content': 'Contenu',
     'nav.funnels': 'Tunnels', 'nav.emails': 'Courriels', 'nav.graphics': 'Visuels', 'nav.programs': 'Programmes', 'nav.brain': 'Cerveau',
     'nav.vault': 'Coffre', 'nav.pipeline': 'Pipeline', 'nav.goals': 'Objectifs', 'nav.settings': 'Connexions et paramètres',
     'top.search': 'Chercher contenu, faits, contacts', 'top.demo': 'Données démo',

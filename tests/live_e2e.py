@@ -24,7 +24,8 @@ def _api(route):
     calls.append((req.url.split('/api/')[1], req.method, body, req.headers.get('authorization')))
     path = req.url.split('/api/')[1].split('?')[0]
     out = {'ok': True}
-    if path == 'config': out = {'supabaseUrl': 'https://fake.supabase.co', 'supabaseAnonKey': 'anon', 'phase': 2}
+    if path == 'chat' and body.get('mode') == 'jarvis': out = {'reply': 'Two drafts are waiting and one new lead came in today.'}
+    elif path == 'config': out = {'supabaseUrl': 'https://fake.supabase.co', 'supabaseAnonKey': 'anon', 'phase': 2}
     elif path == 'keys' and req.method == 'GET': out = {'providers': providers}
     elif path == 'keys' and body.get('action') == 'test': out = {'ok': True, 'status': 'ok', 'message': 'Key works'}
     elif path == 'brain' and body.get('action') == 'compile': out = {'brand_dna': {'version_no': 2}}
@@ -37,6 +38,11 @@ def _api(route):
         elif a == 'context': out = {'socialAccounts': [{'id': 'acc1', 'name': 'Ciftron IG', 'platform': 'instagram'}], 'customValues': [{'id': 'cv1', 'name': 'OS_offer_1_name', 'value': 'Lead Gen'}]}
         elif a == 'preview': out = {'preview': {'method': 'PUT' if body['kind'] == 'move' else 'POST', 'url': '/x', 'body': body['input'], 'summary': 'Preview ' + body['kind'], 'warning': 'HighLevel automations may trigger', 'scope': 'opportunities.write'}}
         elif a == 'write': out = {'ok': True, 'id': 'new1', 'summary': 'Done ' + body['kind']}
+    elif path == 'studio':
+        a = body.get('action')
+        out = {'remix': {'drafts': 2}, 'email_sequence': {'sequence_id': 'es1'}, 'funnel_build': {'version_no': 2}, 'goal': {'goal_id': 'g1'}, 'goals_sync': {'updated': 0, 'sources': {}},
+               'program_propose': {'approval_id': 'apx'}, 'vault_brief': {'brief': {}}, 'learning_refresh': {'signals': 1}, 'research_fetch': {'posts': 12, 'median': 1800},
+               'graphic': {'b64': 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP4z8DwHwyBNAOU8R8AjjgL9YdRIygAAAAASUVORK5CYII=', 'media_type': 'image/png', 'prompt': 'p', 'model': 'm', 'cost': 0.04}, 'rewrite_email': {'subject': 'New subject', 'preview': '', 'body': 'Shorter body'}}.get(a, {'ok': True})
     elif path == 'meta': out = {'range': 'last_7d', 'spend': 198.8, 'leads': 14, 'cpl': 14.2, 'previous': {'spend': 160, 'leads': 10, 'cpl': 16}, 'campaigns': [{'id': '1', 'name': 'Mortgage leads', 'spend': 198.8, 'leads': 14, 'cpl': 14.2}]}
     elif path == 'chat': out = {'thread_id': 't1', 'messages': [], 'drafts': [{'id': 'new', 'title': 'Hooks', 'type': 'Hooks'}], 'warnings': ['Brain search skipped: OpenAI has no credits left.']}
     elif path == 'brain' and body.get('action') == 'search': out = {'results': [{'source_name': 'about_me', 'content': 'mortgage brokers', 'similarity': 0.82}]}
@@ -134,12 +140,12 @@ try:
         assert pg.locator('.nav-link[href="#approvals"] .count').inner_text() == '3', 'live pending count'
         shot(pg, 'approvals')
         pg.locator('.card', has_text='5 Reel hooks').locator('[data-act=approve]').click(); pg.wait_for_selector('text=Moved to Content')
-        ap = pg.evaluate("window.__FAKE_DB__.approvals.find(a=>a.id==='ap1')"); ci = pg.evaluate("window.__FAKE_DB__.content_items")
+        ap = pg.evaluate("window.__FAKE_DB__.approvals.find(a=>a.id==='ap1')"); ci = pg.evaluate("window.__FAKE_DB__.content_items.filter(c=>c.approval_id==='ap1')")
         assert ap['status'] == 'approved' and ap['version'] == 2 and len(ci) == 1 and ci[0]['approval_id'] == 'ap1' and ci[0]['format'] == 'Short video', (ap, ci)
         assert 'not cold' in ci[0]['hook']
         pg.wait_for_function("document.querySelector('.nav-link[href=\"#approvals\"] .count').innerText === '2'")
         pg.locator('.toast button').first.click(); pg.wait_for_function("window.__FAKE_DB__.approvals.find(a=>a.id==='ap1').status==='pending'")
-        assert pg.evaluate("window.__FAKE_DB__.content_items.length") == 0, 'undo should remove the content card'
+        assert pg.evaluate("window.__FAKE_DB__.content_items.filter(c=>c.approval_id==='ap1').length") == 0, 'undo should remove the content card'
         pg.locator('.card', has_text='Prêt privé').locator('[data-act=edit]').click(); pg.fill('#eb', 'Votre banque a dit non? Parlons-en.'); pg.click('.modal [data-ok]')
         pg.wait_for_selector('text=Edited by you')
         ap2 = pg.evaluate("window.__FAKE_DB__.approvals.find(a=>a.id==='ap2')")
@@ -169,8 +175,7 @@ try:
         assert pg.evaluate("window.__FAKE_DB__.approvals.some(a => a.payload.body.startsWith('Verdict: do both'))")
 
         # 13. AI Team: agents from the database, later agents locked, messages go to /api/chat with the agent slug
-        pg.goto(base + '#team'); pg.wait_for_selector('text=Arrives in Phase 5')
-        pg.locator('[data-agent=researcher]').click(); assert pg.locator('#asend').is_disabled() and pg.locator('#aen').is_disabled()
+        pg.goto(base + '#team'); pg.wait_for_selector('[data-agent=content-strategist]')
         pg.locator('[data-agent=content-strategist]').click(); pg.fill('#amsg', '5 hooks for brokers'); pg.click('#asend')
         pg.wait_for_selector('text=1 draft saved to Approvals')
         sent = [c for c in calls if c[0] == 'chat'][-1][2]
@@ -179,7 +184,7 @@ try:
         pg.locator('[data-agent=chief-of-staff]').click(); assert pg.locator('#aen').is_disabled(), 'Chief of Staff is pinned on'
 
         # 14. Home: real numbers from HighLevel and Meta
-        pg.goto(base + '#home'); pg.wait_for_selector('text=Meta campaigns (7 days)')
+        pg.goto(base + '#home'); pg.wait_for_selector('text=Meta campaigns (7 days)', timeout=15000)
         txt = pg.locator('#view').inner_text()
         assert '$14.20' in txt and 'Mortgage leads' in txt and '-1.80 vs last week' in txt and '$1,194' in txt, txt[:600]
         shot(pg, 'home')
@@ -222,11 +227,75 @@ try:
         pg.click('#cvnew'); pg.fill('#cvn', 'OS_offer_2_price'); pg.fill('#cvv', '97'); pg.click('.modal [data-ok]'); pg.wait_for_selector('text=Preview custom_value')
         pg.click('.modal [data-close]')
 
-        # 18. Demo screens still render in live mode and say which phase makes them real
-        pg.goto(base + '#funnels'); pg.wait_for_selector('#view h1'); assert 'Phase 5' in pg.locator('#demo-pill').inner_text()
+        # 18. Jarvis: typed question goes to Jarvis mode and shows the answer; no transcript list
+        pg.goto(base + '#home'); pg.wait_for_selector('#jv-canvas'); pg.wait_for_selector('text=agents are on')
+        pg.click('[data-p="What needs me today?"]'); pg.wait_for_selector('text=one new lead came in today')
+        j = [c for c in calls if c[0] == 'chat'][-1][2]
+        assert j['mode'] == 'jarvis' and j['message'] == 'What needs me today?', j
+        assert pg.locator('.jv-answer').count() == 1, 'only the latest answer is shown'
+        shot(pg, 'jarvis')
+
+        # 19. Content: board drag with version bump, drawer save, remix, research fetch, learning
+        pg.goto(base + '#content'); pg.wait_for_selector('text=Follow-up speed Reel')
+        pg.locator('[data-card=ci1]').drag_to(pg.locator('[data-col=Scripting]'))
+        pg.wait_for_function("window.__FAKE_DB__.content_items.find(c=>c.id==='ci1').stage==='Scripting'")
+        assert pg.evaluate("window.__FAKE_DB__.content_items.find(c=>c.id==='ci1').version") == 2
+        pg.locator('[data-card=ci1]').click(); pg.fill('#d-hook', 'Your leads are not cold'); pg.click('#d-save'); pg.wait_for_selector('text=Saved')
+        assert pg.evaluate("window.__FAKE_DB__.content_items.find(c=>c.id==='ci1').authored_by") == 'me'
+        pg.click('[data-tab=research]'); pg.wait_for_selector('text=11.89'); pg.locator('[data-remix="0"]').click(); pg.click('.modal [data-ok]'); pg.wait_for_selector('text=2 drafts sent to Approvals')
+        r = [c for c in calls if c[0] == 'studio'][-1][2]; assert r['action'] == 'remix' and r['formats'] == ['Short video', 'Carousel'] and r['idea']['score'] == 11.89, r
+        pg.locator('[data-fetch=rc1]').click(); pg.wait_for_selector('text=12 posts')
+        pg.click('[data-tab=learning]'); pg.wait_for_selector('text=You approve most Hooks'); pg.locator('[data-to=paused]').click()
+        pg.wait_for_function("window.__FAKE_DB__.learning_signals[0].state==='paused'")
+
+        # 20. Emails: generate, edit, rewrite preview without overwriting, approve unlocks HighLevel template
+        pg.goto(base + '#emails'); pg.wait_for_selector('text=Your call is booked'); assert pg.locator('#ehl').count() == 0, 'not approved yet'
+        pg.click('#erw'); pg.fill('#ri', 'shorter'); pg.click('#rgo'); pg.wait_for_selector('text=Shorter body')
+        assert pg.evaluate("window.__FAKE_DB__.email_sequences[0].emails[0].body") == 'Hi NAME', 'rewrite must not overwrite until chosen'
+        pg.click('#ruse'); pg.wait_for_function("window.__FAKE_DB__.email_sequences[0].emails[0].body==='Shorter body'")
+        assert pg.evaluate("window.__FAKE_DB__.email_sequences[0].authored_by") == 'me'
+        pg.evaluate('''() => window.__FAKE_DB__.approvals.push({ id: 'ap20', owner_id: '11111111-1111-1111-1111-111111111111', type: 'Email sequence', title: 'Call reminders', payload: { sequence_id: 'es1', body: 'x' }, tags: [], language: 'en', source_agent: 'Email Writer', target_module: 'emails', status: 'pending', trashed_at: null, authored_by: 'ai', version: 1, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })''')
+        pg.goto(base + '#approvals'); pg.click('[data-tab=pending]'); pg.locator('.card', has_text='Call reminders').locator('[data-act=approve]').click(); pg.wait_for_selector('text=Moved to Emails')
+        pg.wait_for_function("window.__FAKE_DB__.email_sequences[0].status==='approved'")
+        pg.goto(base + '#emails'); pg.wait_for_selector('#ehl'); pg.click('#ehl'); pg.wait_for_selector('text=Preview email_template'); pg.click('.modal [data-close]')
+
+        # 21. Funnels: brief save, build, preview iframe, approved version sends a bundle after review
+        pg.goto(base + '#funnels'); pg.wait_for_selector('text=Meta Ads review call')
+        pg.fill('[data-b=promise]', 'See where leads leak'); pg.click('#build'); pg.wait_for_selector('text=Built v2')
+        assert pg.evaluate("window.__FAKE_DB__.funnels[0].brief.promise") == 'See where leads leak'
+        pg.click('[data-tab=page]'); pg.wait_for_selector('text=Find your lead leaks'); pg.click('#prev'); pg.wait_for_selector('#pvf'); pg.click('.modal [data-close]')
+        pg.click('#send'); pg.wait_for_selector('text=Preview funnel_bundle')
+        fb = [c for c in calls if c[0] == 'hl' and c[2].get('action') == 'preview'][-1][2]['input']
+        assert fb['product']['name'].startswith('Lead Generation') and fb['emails'][0]['subject'] == 'Booked' and list(fb['customValues'])[0].startswith('OS_'), fb
+        pg.click('.modal [data-close]')
+
+        # 22. Graphics: brand board save, generate crops to exact size and queues an approval
+        pg.goto(base + '#graphics'); pg.wait_for_selector('#ggo'); pg.select_option('#gfmt', 'YouTube thumbnail'); pg.fill('#ghead', 'Audit'); pg.click('#ggo')
+        pg.wait_for_selector('text=Saved v1 (1280 × 720)')
+        g = pg.evaluate("window.__FAKE_DB__.graphics[0]"); assert g['width'] == 1280 and g['height'] == 720, g
+        assert pg.evaluate("window.__FAKE_DB__.approvals.some(a => a.type === 'Graphic' && a.target_module === 'graphics')")
+        pg.click('[data-tab=board]'); pg.wait_for_selector('#bsave'); pg.click('#bsave'); pg.wait_for_selector('text=Brand board saved')
+        assert pg.evaluate("window.__FAKE_DB__.brand_board.length") == 1
+
+        # 23. Vault, Goals, Programs
+        pg.goto(base + '#vault'); pg.wait_for_selector('text=Clean pricing page'); pg.locator('[data-brief=v1]').click(); pg.wait_for_selector('text=Brief saved here')
+        pg.goto(base + '#goals'); pg.fill('#graw', 'Book 15 qualified appointments'); pg.click('#gadd'); pg.wait_for_selector('text=Goal added')
+        assert [c for c in calls if c[0] == 'studio' and c[2].get('action') == 'goal'][-1][2]['raw'] == 'Book 15 qualified appointments'
+        pg.evaluate('''() => window.__FAKE_DB__.approvals.push({ id: 'ap23', owner_id: '11111111-1111-1111-1111-111111111111', type: 'Program', title: 'Program proposal: Lead Response Bootcamp', payload: { body: 'x', program: { name: 'Lead Response Bootcamp', description: 'd', modules: [{ title: 'Speed', lessons: [{ title: 'First 10 minutes', summary: 's' }] }] } }, tags: [], language: 'en', source_agent: 'Content Strategist', target_module: 'programs', status: 'pending', trashed_at: null, authored_by: 'ai', version: 1, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })''')
+        pg.goto(base + '#approvals'); pg.click('[data-tab=pending]'); pg.locator('.card', has_text='Lead Response Bootcamp').locator('[data-act=approve]').click(); pg.wait_for_selector('text=Moved to Programs')
+        assert pg.evaluate("window.__FAKE_DB__.program_lessons.length") == 1
+        pg.goto(base + '#programs'); pg.wait_for_selector('text=First 10 minutes'); pg.click('#send'); pg.wait_for_selector('text=Preview course')
+        c = [x for x in calls if x[0] == 'hl' and x[2].get('action') == 'preview'][-1][2]['input']['program']
+        assert c['modules'][0]['lessons'][0]['title'] == 'First 10 minutes', c
+        pg.click('.modal [data-close]')
+        shot(pg, 'programs')
+
+        # 24. AI Team: every agent usable now
+        pg.goto(base + '#team'); pg.wait_for_selector('[data-agent=researcher]'); pg.locator('[data-agent=researcher]').click()
+        assert not pg.locator('#asend').is_disabled() or pg.locator('#aen').is_checked() is False
         b.close()
 finally:
     srv.terminate()
 if errors:
     print('\n'.join(errors)); sys.exit(1)
-print('OK: live mode e2e (login, Brain, keys, Approvals, Chat, Strategy Room, Team, Home, Pipeline, HighLevel writes, custom values)')
+print('OK: live mode e2e (login, Brain, keys, Approvals, Chat, Team, Pipeline, HighLevel writes, Jarvis, Content, Emails, Funnels, Graphics, Vault, Goals, Programs)')
