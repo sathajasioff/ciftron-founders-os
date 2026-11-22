@@ -43,6 +43,8 @@ class Query {
   delete() { this.op = 'delete'; return this; }
   eq(k, v) { this.filters.push([k, v]); return this; }
   is(k, v) { this.filters.push([k, v]); return this; }
+  neq(k, v) { this.filters.push([k, v, 'neq']); return this; }
+  gte(k, v) { this.filters.push([k, v, 'gte']); return this; }
   in(k, vs) { this.filters.push([k, vs, 'in']); return this; }
   order(k, o) { this.order_ = [k, o?.ascending !== false]; return this; }
   limit(n) { this.limit_ = n; return this; }
@@ -51,7 +53,7 @@ class Query {
   then(res, rej) { return Promise.resolve().then(() => this.run()).then(res, rej); }
   run() {
     const rows = (db[this.t] ||= []);
-    const match = (r) => this.filters.every(([k, v, op]) => (op === 'in' ? v.includes(r[k]) : (r[k] ?? null) === v));
+    const match = (r) => this.filters.every(([k, v, op]) => (op === 'in' ? v.includes(r[k]) : op === 'neq' ? r[k] !== v : op === 'gte' ? r[k] >= v : (r[k] ?? null) === v));
     let data;
     if (this.op === 'insert') {
       data = this.vals.map((v) => ({ id: uid(), version: 1, tags: [], trashed_at: null, agent_id: null, status: this.t === 'brain_sources' ? 'pending' : v.status, created_at: now(), updated_at: now(), starred: false, ...v }));

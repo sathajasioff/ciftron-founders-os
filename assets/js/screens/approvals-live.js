@@ -1,7 +1,11 @@
 // Approvals backed by Supabase: the single queue for every AI idea and draft.
 import { t } from '../i18n.js';
 import { head, icon, esc, toast, modal, tabsHtml, marks, $ } from '../ui.js';
-import { live, q, versionedUpdate } from '../live.js';
+import { live, api, q, versionedUpdate } from '../live.js';
+import { hlWrite } from '../hl-ui.js';
+
+const SOCIAL = ['Written post', 'Caption', 'Carousel'];
+const EMAIL = ['Email', 'Email sequence'];
 
 const ui = { view: 'pending', tag: '', type: '', lang: '' };
 const FORMAT = { Hooks: 'Short video', 'Video script': 'Short video', Carousel: 'Carousel', 'Written post': 'Written post', Caption: 'Written post', 'Ad copy': 'Meta Ad copy', Email: 'Email', 'Email sequence': 'Email', 'Content plan': 'Content plan', Idea: 'Idea', Brief: 'Idea' };
@@ -44,6 +48,8 @@ export async function render(el, ctx) {
   async function act(a, what) {
     try {
       if (what === 'edit') return edit(a);
+      if (what === 'hl-social') return sendSocial(a);
+      if (what === 'hl-email') return sendEmail(a);
       if (what === 'approve') {
         // Approving moves the item into its module. Content gets a planning card right away.
         let card = null;
@@ -62,6 +68,27 @@ export async function render(el, ctx) {
       if (what === 'restore') { if (!(await update(a, { trashed_at: null }))) return; toast('Restored'); }
       ctx.refreshNav(); draw();
     } catch (e) { toast(e.message); }
+  }
+
+  const markSent = async (a, kind, r) => { await update(a, { payload: { ...a.payload, hl_sent: [...(a.payload?.hl_sent || []), { kind, id: r.id, at: new Date().toISOString() }] } }); draw(); };
+
+  async function sendSocial(a) {
+    let accounts = [];
+    try { const c = await api('hl', { body: { action: 'context' } }); accounts = Array.isArray(c.socialAccounts) ? c.socialAccounts : []; } catch (e) { return toast(e.message, { ms: 7000 }); }
+    modal({ title: 'Send to HighLevel Social Planner', sub: 'Saved as a draft. You schedule it in HighLevel.',
+      body: accounts.length ? `<p class="small" style="font-weight:600">Accounts (optional for drafts)</p>${accounts.map((x) => `<label class="row small" style="margin:6px 0"><input type="checkbox" value="${esc(x.id)}" data-acc> ${esc(x.name || x.id)} <span class="chip">${esc(x.platform || '')}</span></label>`).join('')}`
+        : '<p class="small muted">No connected social accounts found (or the socialplanner/account.readonly scope is missing). The draft is saved without accounts; pick them in HighLevel.</p>',
+      foot: `<button class="btn" data-close>${t('c.cancel')}</button><button class="btn btn-primary" data-ok>Review</button>`,
+      onMount: (ov, close) => { ov.querySelector('[data-ok]').onclick = () => {
+        const accountIds = [...ov.querySelectorAll('[data-acc]:checked')].map((x) => x.value);
+        close(); hlWrite('social_draft', { title: a.title, text: a.payload?.body || '', accountIds }, { onDone: (r) => markSent(a, 'social_draft', r) });
+      }; } });
+  }
+
+  function sendEmail(a) {
+    const body = a.payload?.body || '';
+    const subject = (body.match(/^subject:\s*(.+)$/im) || [])[1] || a.title;
+    hlWrite('email_template', { name: a.title, subject, body: body.replace(/^subject:.*\n+/im, '') }, { onDone: (r) => markSent(a, 'email_template', r) });
   }
 
   function edit(a) {
@@ -93,6 +120,9 @@ function card(a) {
       ${a.status !== 'approved' ? `<button class="btn btn-sm btn-primary" data-act="approve" data-id="${a.id}">${icon('check')} ${t('c.approve')}</button>` : ''}
       <button class="btn btn-sm" data-act="edit" data-id="${a.id}">${icon('edit')} ${t('c.edit')}</button>
       ${a.status === 'pending' ? `<button class="btn btn-sm" data-act="pass" data-id="${a.id}">${t('c.pass')}</button>` : ''}
+      ${a.status === 'approved' && SOCIAL.includes(a.type) ? `<button class="btn btn-sm hl-btn" data-act="hl-social" data-id="${a.id}">${t('content.sendSocial')}</button>` : ''}
+      ${a.status === 'approved' && EMAIL.includes(a.type) ? `<button class="btn btn-sm hl-btn" data-act="hl-email" data-id="${a.id}">Save as HighLevel email template</button>` : ''}
+      ${a.payload?.hl_sent?.length ? `<span class="chip ok">Sent to HighLevel ×${a.payload.hl_sent.length}</span>` : ''}
       <button class="btn btn-sm btn-ghost" data-act="trash" data-id="${a.id}" style="margin-left:auto">${icon('trash')} ${t('c.trash')}</button>`}
     </div></div>`;
 }

@@ -9,14 +9,14 @@ A private, single-owner AI command center on top of HighLevel. HighLevel is the 
 | 1 | Clickable demo, every screen, sample data, light/dark, EN / FR-QC | **Done** |
 | 2 | Supabase auth, schema with RLS, encrypted keys, full Brain | **Done** (setup: `docs/SETUP.md`) |
 | 3 | AI Chat with Brand DNA, Approvals queue, Content Strategist agent | **Done** (run migration 003) |
-| 4 | HighLevel + Meta Ads (read-only) connections, Pipeline, confirmed writes | |
+| 4 | HighLevel + Meta Ads (read-only) connections, Pipeline, confirmed writes | **Done** (scopes in `docs/SETUP.md`) |
 | 5 | Creation studio modules you confirm, remaining agents | |
 | 6 | Jarvis voice, MCP server, recurring routines | |
 | 7 | os.ciftron.com, security headers, error logging, tests | |
 
 ## Live vs demo
 
-With Supabase configured (see `docs/SETUP.md`), sign-in is required and **Brain**, **Connections and Settings**, **AI Chat**, **AI Team** and **Approvals** use real data. Other screens show demo data with a "Phase N" tag until their phase. Without Supabase env vars (local static server, hosted demo) the whole app runs in demo mode.
+With Supabase configured (see `docs/SETUP.md`), sign-in is required and **Home**, **AI Chat**, **AI Team**, **Approvals**, **Brain**, **Pipeline** and **Connections and Settings** use real data. Other screens show demo data with a "Phase N" tag until their phase. Without Supabase env vars (local static server, hosted demo) the whole app runs in demo mode.
 
 ## Phase 1: what is real and what is mocked
 
@@ -55,7 +55,7 @@ assets/js/i18n.js       EN and FR-QC strings
 assets/js/ui.js         Icons, modal, drawer, toast, confirmWrite
 assets/js/data.js       Phase 1 sample data
 assets/js/screens/*.js  One file per screen
-api/                    Vercel server functions (config, keys, brain, chat, account)
+api/                    Vercel server functions (config, keys, brain, chat, hl, meta, account)
 api/_lib/               Auth guard, AES-256-GCM, providers, Brain logic
 supabase/migrations/    Schema, RLS, storage policies
 assets/js/live.js       Supabase auth, API calls, versioned updates

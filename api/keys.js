@@ -43,7 +43,8 @@ export default handler(['GET', 'POST', 'DELETE'], async (req, body) => {
   if (body.action === 'test') {
     const secrets = {};
     for (const f of p.secret) secrets[f] = await getSecret(admin, user.id, body.provider, f);
-    const r = await testProvider(body.provider, secrets);
+    const { data: conn } = await db.from('connections').select('config').eq('provider', body.provider).maybeSingle();
+    const r = await testProvider(body.provider, secrets, conn?.config || {});
     const status = r.deferred ? 'untested' : r.ok ? 'ok' : 'error';
     await admin.from('provider_keys').update({ status, test_message: r.message, last_tested_at: new Date().toISOString() })
       .eq('owner_id', user.id).eq('provider', body.provider);

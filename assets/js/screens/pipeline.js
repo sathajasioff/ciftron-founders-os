@@ -6,7 +6,8 @@ let q = '';
 let allowBack = false;
 const WARN = 'HighLevel automations may trigger on this move (stage changes, tags or new contacts).';
 
-export function render(el) {
+export function render(el, ctx = {}) {
+  if (ctx.live) return import('./pipeline-live.js').then((m) => m.render(el, ctx));
   const draw = () => {
     const match = (o) => !q || `${o.name} ${o.company} ${o.tags.join(' ')}`.toLowerCase().includes(q.toLowerCase());
     const n = (fn) => opportunities.filter(fn).length;

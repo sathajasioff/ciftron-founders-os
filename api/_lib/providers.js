@@ -1,11 +1,13 @@
 // Provider catalog, key storage helpers, connection tests and the two AI calls the Brain needs.
 import { decrypt } from './crypto.js';
 import { HttpError } from './http.js';
+import { hlFetch } from './hl.js';
+import { metaFetch } from './meta.js';
 
 // fields: secret fields are encrypted in provider_keys; plain fields go to connections.config.
 export const PROVIDERS = {
-  highlevel: { name: 'HighLevel', secret: ['private_integration_token'], plain: ['location_id'], phase: 4 },
-  meta_ads: { name: 'Meta Ads', secret: ['access_token'], plain: ['ad_account_id'], phase: 4 },
+  highlevel: { name: 'HighLevel', secret: ['private_integration_token'], plain: ['location_id'] },
+  meta_ads: { name: 'Meta Ads', secret: ['access_token'], plain: ['ad_account_id'] },
   anthropic: { name: 'Anthropic', secret: ['api_key'], plain: [] },
   openai: { name: 'OpenAI', secret: ['api_key'], plain: [] },
   openrouter: { name: 'OpenRouter', secret: ['api_key'], plain: [] },
@@ -35,8 +37,10 @@ async function check(url, init, okMsg) {
 }
 
 // Each test makes one cheap, read-only request.
-export async function testProvider(provider, s) {
+export async function testProvider(provider, s, config = {}) {
   switch (provider) {
+    case 'highlevel': return testHighLevel(s.private_integration_token, config.location_id);
+    case 'meta_ads': return testMeta(s.access_token, config.ad_account_id);
     case 'anthropic': return check('https://api.anthropic.com/v1/models?limit=1', { headers: { 'x-api-key': s.api_key, 'anthropic-version': '2023-06-01' } }, 'Key works');
     case 'openai': return check('https://api.openai.com/v1/models', { headers: { Authorization: `Bearer ${s.api_key}` } }, 'Key works');
     case 'openrouter': return check('https://openrouter.ai/api/v1/key', { headers: { Authorization: `Bearer ${s.api_key}` } }, 'Key works');
@@ -94,4 +98,35 @@ export async function gpt(apiKey, { system, prompt, maxTokens = 1200 }) {
   if (!r.ok) throw await providerError('OpenAI', r);
   const j = await r.json();
   return j.choices?.[0]?.message?.content || '';
+}
+
+// HighLevel: the location must load; then each read scope is probed so missing ones are named.
+export async function testHighLevel(token, locationId) {
+  if (!locationId) return { ok: false, message: 'Add the Location ID' };
+  let name;
+  try { name = (await hlFetch(token, `/locations/${locationId}`, { scope: 'locations.readonly' })).location?.name; }
+  catch (e) { return { ok: false, message: e.message }; }
+  const probes = [
+    ['opportunities.readonly', `/opportunities/pipelines`, { locationId }],
+    ['products.readonly', '/products/', { locationId, limit: 1 }],
+    ['funnels/funnel.readonly', '/funnels/funnel/list', { locationId, limit: 1 }],
+    ['socialplanner/account.readonly', `/social-media-posting/${locationId}/accounts`, {}],
+    ['locations/customValues.readonly', `/locations/${locationId}/customValues`, {}],
+  ];
+  const missing = [];
+  for (const [scope, path, query] of probes) {
+    try { await hlFetch(token, path, { query, scope }); } catch (e) { if (e.status === 403 || e.scope) missing.push(scope); }
+  }
+  return missing.length
+    ? { ok: true, message: `Connected to ${name || 'your sub-account'}. Missing read scopes: ${missing.join(', ')}`, missing }
+    : { ok: true, message: `Connected to ${name || 'your sub-account'}. All read scopes work.` };
+}
+
+export async function testMeta(token, accountId) {
+  if (!accountId) return { ok: false, message: 'Add the ad account ID' };
+  const act = accountId.startsWith('act_') ? accountId : 'act_' + accountId.replace(/\D/g, '');
+  try {
+    const a = await metaFetch(token, `/${act}`, { fields: 'name,account_status,currency' });
+    return { ok: true, message: `Connected to ${a.name || act} (${a.currency || 'currency unknown'})${a.account_status === 1 ? '' : '. Account is not active'}` };
+  } catch (e) { return { ok: false, message: e.message }; }
 }

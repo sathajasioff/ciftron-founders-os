@@ -7,7 +7,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FAKE = open(os.path.join(ROOT, 'tests/fixtures/fake-supabase.js')).read()
 calls = []
 providers = [
-    {'id': 'highlevel', 'name': 'HighLevel', 'connected': False, 'phase': 4, 'status': 'none', 'fields': {'secret': ['private_integration_token'], 'plain': ['location_id']}, 'config': {}},
+    {'id': 'highlevel', 'name': 'HighLevel', 'connected': True, 'phase': None, 'status': 'ok', 'last4': '12cf', 'fields': {'secret': ['private_integration_token'], 'plain': ['location_id']}, 'config': {}},
     {'id': 'anthropic', 'name': 'Anthropic', 'connected': True, 'phase': None, 'status': 'ok', 'last4': 'x7Qf', 'test_message': 'Key works', 'fields': {'secret': ['api_key'], 'plain': []}, 'config': {}},
     {'id': 'openai', 'name': 'OpenAI', 'connected': False, 'phase': None, 'status': 'none', 'fields': {'secret': ['api_key'], 'plain': []}, 'config': {}},
 ]
@@ -30,9 +30,23 @@ def _api(route):
     elif path == 'brain' and body.get('action') == 'compile': out = {'brand_dna': {'version_no': 2}}
     elif path == 'brain' and body.get('action') == 'ingest': out = {'ok': True, 'chunks': 7}
     elif path == 'brain' and body.get('action') == 'propose': out = {'proposed': 0}
+    elif path == 'hl':
+        a = body.get('action')
+        if a == 'board': out = BOARD
+        elif a == 'contact': out = {'contact': {'id': 'c1', 'name': 'Marc Tremblay', 'email': 'marc@example.com', 'phone': '+15145550101', 'companyName': 'Tremblay Hypotheques', 'tags': ['mortgage'], 'city': 'Montreal'}}
+        elif a == 'context': out = {'socialAccounts': [{'id': 'acc1', 'name': 'Ciftron IG', 'platform': 'instagram'}], 'customValues': [{'id': 'cv1', 'name': 'OS_offer_1_name', 'value': 'Lead Gen'}]}
+        elif a == 'preview': out = {'preview': {'method': 'PUT' if body['kind'] == 'move' else 'POST', 'url': '/x', 'body': body['input'], 'summary': 'Preview ' + body['kind'], 'warning': 'HighLevel automations may trigger', 'scope': 'opportunities.write'}}
+        elif a == 'write': out = {'ok': True, 'id': 'new1', 'summary': 'Done ' + body['kind']}
+    elif path == 'meta': out = {'range': 'last_7d', 'spend': 198.8, 'leads': 14, 'cpl': 14.2, 'previous': {'spend': 160, 'leads': 10, 'cpl': 16}, 'campaigns': [{'id': '1', 'name': 'Mortgage leads', 'spend': 198.8, 'leads': 14, 'cpl': 14.2}]}
     elif path == 'chat': out = {'thread_id': 't1', 'messages': [], 'drafts': [{'id': 'new', 'title': 'Hooks', 'type': 'Hooks'}], 'warnings': ['Brain search skipped: OpenAI has no credits left.']}
     elif path == 'brain' and body.get('action') == 'search': out = {'results': [{'source_name': 'about_me', 'content': 'mortgage brokers', 'similarity': 0.82}]}
     route.fulfill(status=200, content_type='application/json', body=json.dumps(out))
+
+BOARD = {'pipelines': [{'id': 'p1', 'name': 'Agency Pipeline'}], 'pipeline': {'id': 'p1', 'name': 'Agency Pipeline'},
+  'stages': [{'id': 's0', 'name': 'New Lead', 'position': 0}, {'id': 's1', 'name': 'Qualified Lead', 'position': 1}, {'id': 's2', 'name': 'Appointment Booked', 'position': 2}],
+  'opportunities': [{'id': 'o1', 'name': 'Marc deal', 'pipelineStageId': 's0', 'status': 'open', 'monetaryValue': 497, 'createdAt': '2026-11-21T10:00:00Z', 'contact': {'id': 'c1', 'name': 'Marc Tremblay', 'tags': ['mortgage']}},
+                    {'id': 'o2', 'name': 'Sophie deal', 'pipelineStageId': 's1', 'status': 'open', 'monetaryValue': 697, 'createdAt': '2026-11-01T10:00:00Z', 'contact': {'id': 'c2', 'name': 'Sophie Gagnon', 'tags': []}}],
+  'stats': {'total': 2, 'newLeads7d': 1, 'qualified': 1, 'appointments': 0, 'active': 2, 'won': 0, 'lost': 0, 'openValue': 1194}}
 
 srv = subprocess.Popen([sys.executable, '-m', 'http.server', '8767'], cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 time.sleep(1)
@@ -164,11 +178,55 @@ try:
         shot(pg, 'team')
         pg.locator('[data-agent=chief-of-staff]').click(); assert pg.locator('#aen').is_disabled(), 'Chief of Staff is pinned on'
 
-        # 14. Demo screens still render in live mode and say which phase makes them real
-        pg.goto(base + '#pipeline'); pg.wait_for_selector('#view h1'); assert 'Phase 4' in pg.locator('#demo-pill').inner_text()
+        # 14. Home: real numbers from HighLevel and Meta
+        pg.goto(base + '#home'); pg.wait_for_selector('text=Meta campaigns (7 days)')
+        txt = pg.locator('#view').inner_text()
+        assert '$14.20' in txt and 'Mortgage leads' in txt and '-1.80 vs last week' in txt and '$1,194' in txt, txt[:600]
+        shot(pg, 'home')
+
+        # 15. Pipeline: board, forward-only, confirmed move with server preview, contact drawer, new contact
+        pg.goto(base + '#pipeline'); pg.wait_for_selector('text=Sophie Gagnon')
+        assert pg.locator('[data-col=s0] .kcard').count() == 1
+        pg.locator('[data-op=o2]').drag_to(pg.locator('[data-col=s0]')); pg.wait_for_selector('text=forward-only')
+        assert not any(c[0] == 'hl' and c[2].get('action') == 'preview' for c in calls), 'backward move must not reach HighLevel'
+        pg.locator('[data-op=o1]').drag_to(pg.locator('[data-col=s1]')); pg.wait_for_selector('text=Preview move')
+        prev = [c for c in calls if c[0] == 'hl' and c[2].get('action') == 'preview'][-1][2]
+        assert prev['kind'] == 'move' and prev['input']['toStageId'] == 's1' and prev['input']['fromStageId'] == 's0', prev
+        pg.wait_for_selector('text=HighLevel automations may trigger')
+        shot(pg, 'pipeline-confirm')
+        pg.click('.modal [data-ok]'); pg.wait_for_selector('text=Sent to HighLevel: Done move')
+        w = [c for c in calls if c[0] == 'hl' and c[2].get('action') == 'write'][-1][2]
+        assert w['confirmed'] is True and w['input'] == prev['input'], w
+        assert pg.locator('[data-col=s1] .kcard').count() == 2
+        pg.locator('[data-op=o2]').click(); pg.wait_for_selector('text=marc@example.com', state='detached'); pg.wait_for_selector('.drawer >> text=Conversations are not shown')
+        pg.locator('.drawer [data-close]').click()
+        pg.click('#newc'); pg.fill('#fn', 'Luc'); pg.fill('#em', 'luc@example.com'); pg.fill('#tg', 'fr, investor'); pg.click('.modal [data-ok]')
+        pg.wait_for_selector('text=Preview contact')
+        prev = [c for c in calls if c[0] == 'hl' and c[2].get('action') == 'preview'][-1][2]
+        assert prev['input']['tags'] == ['fr', 'investor'] and prev['input']['email'] == 'luc@example.com'
+        pg.click('.modal [data-close]')
+        assert not any(c[0] == 'hl' and c[2].get('action') == 'write' and c[2].get('kind') == 'contact' for c in calls), 'cancel must not write'
+        shot(pg, 'pipeline')
+
+        # 16. Approvals: approved post goes to Social Planner as a draft after review
+        pg.evaluate('''() => window.__FAKE_DB__.approvals.push({ id: 'ap9', owner_id: '11111111-1111-1111-1111-111111111111', type: 'Written post', title: 'LinkedIn: why your CRM is empty', payload: { body: 'Most CRMs are empty because of slow follow-up.' }, tags: [], language: 'en', source_agent: 'Content Strategist', target_module: 'content', status: 'approved', trashed_at: null, authored_by: 'ai', version: 3, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })''')
+        pg.goto(base + '#approvals'); pg.click('[data-tab=approved]'); pg.locator('[data-act=hl-social]').click()
+        pg.wait_for_selector('text=Ciftron IG'); pg.check('[data-acc]'); pg.click('.modal [data-ok]'); pg.wait_for_selector('text=Preview social_draft')
+        prev = [c for c in calls if c[0] == 'hl' and c[2].get('action') == 'preview'][-1][2]
+        assert prev['input']['accountIds'] == ['acc1'] and 'slow follow-up' in prev['input']['text']
+        pg.click('.modal [data-ok]'); pg.wait_for_selector('text=Sent to HighLevel ×1')
+        assert pg.evaluate("window.__FAKE_DB__.approvals.find(a=>a.id==='ap9').payload.hl_sent[0].kind") == 'social_draft'
+
+        # 17. Settings: OS_ custom values
+        pg.goto(base + '#connections'); pg.click('#cvload'); pg.wait_for_selector('text=OS_offer_1_name')
+        pg.click('#cvnew'); pg.fill('#cvn', 'OS_offer_2_price'); pg.fill('#cvv', '97'); pg.click('.modal [data-ok]'); pg.wait_for_selector('text=Preview custom_value')
+        pg.click('.modal [data-close]')
+
+        # 18. Demo screens still render in live mode and say which phase makes them real
+        pg.goto(base + '#funnels'); pg.wait_for_selector('#view h1'); assert 'Phase 5' in pg.locator('#demo-pill').inner_text()
         b.close()
 finally:
     srv.terminate()
 if errors:
     print('\n'.join(errors)); sys.exit(1)
-print('OK: live mode e2e (login, Brain, keys, danger zone, Approvals, AI Chat, Strategy Room, AI Team)')
+print('OK: live mode e2e (login, Brain, keys, Approvals, Chat, Strategy Room, Team, Home, Pipeline, HighLevel writes, custom values)')

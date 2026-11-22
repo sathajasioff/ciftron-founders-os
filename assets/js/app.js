@@ -4,8 +4,8 @@ import { approvals, owner } from './data.js';
 import { live, initLive, loginScreen, api } from './live.js';
 
 // Screens backed by real data once Supabase is configured. The rest stay demo until their phase.
-const LIVE_ROUTES = ['brain', 'connections', 'chat', 'team', 'approvals'];
-const PHASE = { pipeline: 4, content: 5, funnels: 5, emails: 5, graphics: 5, programs: 5, vault: 5, goals: 5, home: 3 };
+const LIVE_ROUTES = ['brain', 'connections', 'chat', 'team', 'approvals', 'pipeline', 'home'];
+const PHASE = { content: 5, funnels: 5, emails: 5, graphics: 5, programs: 5, vault: 5, goals: 5 };
 
 const NAV = [
   ['nav.workspace', [['home', 'home'], ['chat', 'chat'], ['team', 'team'], ['approvals', 'inbox']]],

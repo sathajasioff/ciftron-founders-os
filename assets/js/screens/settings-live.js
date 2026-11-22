@@ -3,6 +3,12 @@ import { t, getLang, setLang } from '../i18n.js';
 import { head, icon, esc, toast, modal, $ } from '../ui.js';
 import { live, api, q } from '../live.js';
 import { setTheme, paintChrome } from '../app.js';
+import { hlWrite } from '../hl-ui.js';
+
+const HL_SCOPES = {
+  read: ['locations.readonly', 'opportunities.readonly', 'contacts.readonly', 'products.readonly', 'funnels/funnel.readonly', 'socialplanner/account.readonly', 'locations/customValues.readonly'],
+  write: ['opportunities.write', 'contacts.write', 'socialplanner/post.write', 'emails/templates.write', 'locations/customValues.write'],
+};
 
 const DESC = {
   highlevel: 'Private Integration token and Location ID for the Ciftron sub-account. Read context, pipeline and confirmed drafts.',
@@ -58,6 +64,8 @@ export async function render(el) {
           ${log.length ? `<div class="table-wrap" style="border:0"><table class="table"><thead><tr><th>When</th><th>Action</th><th>Target</th><th>Status</th></tr></thead><tbody>
           ${log.map((w) => `<tr><td class="small muted" style="white-space:nowrap">${new Date(w.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</td><td class="small">${esc(w.action)}</td><td class="small">${esc(w.target)}</td><td><span class="chip ${w.status === 'sent' ? 'ok' : 'danger'}">${esc(w.status)}</span></td></tr>`).join('')}</tbody></table></div>`
           : '<p class="small muted">No HighLevel writes yet. They start in Phase 4.</p>'}</div>
+        <div class="card stack" id="cvcard"><div class="card-head" style="margin:0"><h3>HighLevel custom values (OS_)</h3>${providers.find((p) => p.id === 'highlevel')?.connected ? '<button class="btn btn-sm" id="cvload">Load</button>' : '<span class="chip">Connect HighLevel</span>'}</div>
+          <p class="small muted">The OS can only create or change custom values whose name starts with OS_. Each change is previewed and logged.</p><div id="cvlist"></div></div>
         <div class="card stack"><div class="card-head" style="margin:0"><h3>MCP access tokens</h3><span class="chip">Phase 6</span></div>
           <p class="small muted">Let Claude Code or Codex work inside the OS through /api/mcp. Read-only or read-write, revocable. Secrets and HighLevel conversations are never exposed.</p></div>
       </div>
@@ -87,6 +95,7 @@ export async function render(el) {
       } catch (e) { toast(e.message); }
       b.disabled = false;
     };
+    const cvl = $('#cvload', el); if (cvl) cvl.onclick = () => loadCustomValues();
     const del = $('#del', el), delbtn = $('#delbtn', el);
     del.oninput = () => { delbtn.disabled = del.value.trim() !== 'delete'; };
     delbtn.onclick = async () => {
@@ -98,7 +107,7 @@ export async function render(el) {
 
   function connect(c) {
     const fields = [...c.fields.secret.map((f) => [f, true]), ...c.fields.plain.map((f) => [f, false])];
-    const scopes = c.id === 'highlevel' ? 'Exact scopes are listed in Phase 4, checked against the current HighLevel API v2 docs. Start read-only.'
+    const scopes = c.id === 'highlevel' ? `In HighLevel: Settings → Private Integrations → your integration → Scopes. Tick these read scopes: <span class="mono">${HL_SCOPES.read.join(', ')}</span>. Add write scopes only when you want those actions: <span class="mono">${HL_SCOPES.write.join(', ')}</span>.`
       : c.id === 'meta_ads' ? 'Read-only: give the system user token only the ads_read permission. The OS never edits campaigns.' : '';
     modal({ title: `${c.connected ? 'Update' : 'Connect'} ${c.name}`, sub: esc(DESC[c.id]),
       body: `<form class="stack" id="kf" autocomplete="off">${fields.map(([f, secret]) => `<div class="field"><label for="k_${f}">${esc(FIELD_LABEL[f] || f)}</label>
@@ -118,6 +127,28 @@ export async function render(el) {
           if (!c.phase) { const r = await api('keys', { body: { action: 'test', provider: c.id } }); msg = r.message; }
           close(); toast(msg); await load(); draw();
         } catch (e) { toast(e.message); b.disabled = false; }
+      }; } });
+  }
+
+  async function loadCustomValues() {
+    const box = $('#cvlist', el); box.innerHTML = '<span class="small muted">Loading...</span>';
+    try {
+      const { customValues } = await api('hl', { body: { action: 'context' } });
+      if (customValues?.error) { box.innerHTML = `<p class="small down">${esc(customValues.error)}</p>`; return; }
+      box.innerHTML = `${customValues.length ? customValues.map((v) => `<div class="row between small" style="margin-bottom:6px"><span class="mono grow">${esc(v.name)}</span><span class="muted" style="max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(v.value)}</span><button class="btn btn-sm btn-ghost" data-cv="${esc(v.id)}">${t('c.edit')}</button></div>`).join('') : '<p class="small muted">No OS_ custom values yet.</p>'}
+        <button class="btn btn-sm" id="cvnew">${icon('plus')} New OS_ value</button>`;
+      box.querySelectorAll('[data-cv]').forEach((b) => b.onclick = () => editValue(customValues.find((v) => v.id === b.dataset.cv)));
+      $('#cvnew', box).onclick = () => editValue(null);
+    } catch (e) { box.innerHTML = `<p class="small down">${esc(e.message)}</p>`; }
+  }
+
+  function editValue(v) {
+    modal({ title: v ? `Edit ${v.name}` : 'New OS_ custom value', body: `<div class="stack"><div class="field"><label>Name</label><input class="input mono" id="cvn" value="${esc(v?.name || 'OS_')}" ${v ? 'readonly' : ''}><div class="hint">Must start with OS_. Letters, numbers and _ only.</div></div>
+      <div class="field"><label>Value</label><textarea class="textarea" id="cvv">${esc(v?.value || '')}</textarea></div></div>`,
+      foot: `<button class="btn" data-close>${t('c.cancel')}</button><button class="btn btn-primary" data-ok>Review</button>`,
+      onMount: (ov, close) => { ov.querySelector('[data-ok]').onclick = () => {
+        const input = { id: v?.id, name: ov.querySelector('#cvn').value.trim(), value: ov.querySelector('#cvv').value };
+        close(); hlWrite('custom_value', input, { onDone: loadCustomValues });
       }; } });
   }
 

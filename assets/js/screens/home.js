@@ -2,7 +2,8 @@ import { t } from '../i18n.js';
 import { head, icon, esc } from '../ui.js';
 import { snapshot, approvals, goals, contentItems, agents } from '../data.js';
 
-export function render(el) {
+export function render(el, ctx = {}) {
+  if (ctx.live) return import('./home-live.js').then((m) => m.render(el, ctx));
   const pending = approvals.filter((a) => a.status === 'pending');
   const thisWeek = contentItems.filter((c) => c.date <= '2026-11-29' && c.stage !== 'Idea');
   el.innerHTML = `

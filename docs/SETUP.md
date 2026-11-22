@@ -73,3 +73,51 @@ How it works:
 - Finished deliverables (hooks, scripts, carousels, ad copy, emails) are saved to **Approvals** automatically. Nothing is published or sent.
 - Chief of Staff routes content work to the Content Strategist, which works in its own thread.
 - Approving a Content draft creates a card on the Content board (the board goes live in Phase 5). Edits are marked as yours.
+
+# Phase 4 update (HighLevel and Meta Ads)
+
+No SQL to run for this phase.
+
+## HighLevel scopes
+
+In HighLevel: **Settings → Private Integrations → your integration (ciftron os) → Edit → Scopes**. Tick these, then save. Your token keeps working; scopes apply to it right away.
+
+**Read (needed now):**
+
+| Scope | Used for |
+|---|---|
+| `locations.readonly` | Connection test, sub-account name |
+| `opportunities.readonly` | Pipeline board: pipelines, stages, opportunities |
+| `contacts.readonly` | Contact details in the Pipeline drawer |
+| `products.readonly` | Products as context |
+| `funnels/funnel.readonly` | Funnel list as context |
+| `socialplanner/account.readonly` | Pick accounts for Social Planner drafts |
+| `locations/customValues.readonly` | Read OS_ custom values |
+
+**Write (only for actions you want; each one is previewed and needs your click):**
+
+| Scope | Action |
+|---|---|
+| `opportunities.write` | Move a card to another stage |
+| `contacts.write` | Create a contact |
+| `socialplanner/post.write` | Send a Social Planner post as a draft |
+| `emails/templates.write` | Save an email template |
+| `locations/customValues.write` | Create or update OS_ custom values only |
+
+Not used and not needed: anything with conversations, SMS sending, payments, workflows or users.
+
+Then in the OS: **Connections → HighLevel → Test.** The result lists any read scope that is still missing.
+
+## Meta Ads (read-only)
+
+1. Meta Business Settings → **Users → System users → Add** (role: Employee).
+2. **Assign assets → Ad accounts →** your account, permission **View performance** only.
+3. **Generate new token**, pick your app, tick only **ads_read**, and set expiry to Never (or 60 days and rotate).
+4. In the OS: **Connections → Meta Ads → Connect**, paste the token and your ad account ID (`act_...` or just the number). Save and test.
+
+The OS never edits campaigns, budgets or ads.
+
+## Optional Vercel env vars
+
+- `HL_API_VERSION` (default `v3`; the OS falls back to `2021-07-28` automatically if HighLevel rejects it)
+- `META_API_VERSION` (default `v26.0`)
