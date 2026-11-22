@@ -6,14 +6,26 @@ import { live, api, q, versionedUpdate } from '../live.js';
 const ACTIVE = ['chief-of-staff', 'content-strategist', 'researcher', 'copywriter', 'designer', 'funnel-builder', 'email-writer', 'crm-assistant', 'marketing-analyst'];
 const ini = (n) => n.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 const st = { slug: 'content-strategist' };
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+// Starting points for a new routine. The owner edits the prompt before saving.
+const PRESETS = {
+  'chief-of-staff': ['daily', 'Morning brief', 'Write a short brief for today: what is waiting in Approvals, how the pipeline moved, what the ads did, and the three things I should do first.'],
+  'content-strategist': ['weekly', 'Next week of content', 'Plan next week of content: five short video ideas and two carousels, built on what is working for me. One draft per idea.'],
+  'marketing-analyst': ['weekly', 'Weekly ads and pipeline review', 'Review last week of Meta Ads and the HighLevel pipeline. Note changes in cost per lead and lead flow, and suggest one test for next week. Brief only.'],
+  'email-writer': ['monthly', 'Monthly newsletter', 'Draft this month newsletter to my list from my recent content and approved Brain facts. One email.'],
+  'crm-assistant': ['weekly', 'Pipeline follow-up list', 'List the stages where leads are stuck and draft one follow-up message per stage for me to review. Do not name contacts.'],
+};
+const cadenceText = (r) => r.cadence === 'daily' ? 'Every day' : r.cadence === 'weekly' ? `Every ${DAYS[r.weekday ?? 1]}` : `Monthly, day ${r.day_of_month ?? 1}`;
+const runTime = () => { const n = new Date(); return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate(), 10, 30)).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); };
 
 export async function render(el, ctx) {
-  let agents = [], thread = null, msgs = [], history = [], busy = false;
+  let agents = [], thread = null, msgs = [], history = [], routines = [], busy = false;
   const loadAgents = async () => { agents = await q(live.sb.from('agents').select('*').order('sort')); };
   const loadThread = async () => {
     const a = agents.find((x) => x.slug === st.slug);
     thread = a ? await q(live.sb.from('threads').select('*').eq('agent_id', a.id).order('updated_at', { ascending: false }).limit(1).maybeSingle()) : null;
     msgs = thread ? await q(live.sb.from('messages').select('*').eq('thread_id', thread.id).order('created_at')) : [];
+    routines = a ? await q(live.sb.from('agent_routines').select('*').eq('agent_id', a.id).order('created_at')) : [];
     history = a ? await q(live.sb.from('approvals').select('id, title, type, status, created_at').eq('source_agent', a.name).order('created_at', { ascending: false }).limit(8)) : [];
   };
 
@@ -50,7 +62,14 @@ export async function render(el, ctx) {
           <p class="small" style="margin-top:6px;white-space:pre-wrap">${esc(a.instructions || 'Written when this agent is built.')}</p>
           <div class="eyebrow" style="margin-top:14px">${t('team.history')}</div>
           ${history.length ? history.map((h) => `<a href="#approvals" class="row between small" style="text-decoration:none;margin:6px 0"><span class="grow" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(h.title)}</span><span class="chip ${h.status === 'approved' ? 'ok' : h.status === 'passed' ? '' : 'warn'}">${h.status}</span></a>`).join('') : '<p class="small muted" style="margin-top:6px">Nothing yet</p>'}
-          <div class="eyebrow" style="margin-top:14px">${t('team.routines')}</div><p class="small muted" style="margin-top:6px">Daily, weekly or monthly draft routines arrive in Phase 6.</p>
+          <div class="row between" style="margin-top:14px"><div class="eyebrow">${t('team.routines')}</div>${usable ? `<button class="btn btn-sm btn-ghost" id="rnew">${icon('plus')} Add</button>` : ''}</div>
+          ${routines.length ? routines.map((r) => `<div class="card soft" style="padding:10px;margin-top:8px">
+            <div class="row between small"><b class="grow">${esc(r.title || 'Routine')}</b>${toggleHtml(r.enabled, `data-ren="${r.id}" aria-label="Routine on or off"`)}</div>
+            <div class="xs muted">${cadenceText(r)} · ${r.language === 'fr-qc' ? 'FR-QC' : 'EN'}${r.last_run_at ? ` · Last run ${new Date(r.last_run_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}</div>
+            ${r.last_status === 'error' ? `<div class="xs down" style="margin-top:4px">${esc(r.last_error || 'Failed')}</div>` : r.last_status === 'skipped' ? `<div class="xs muted" style="margin-top:4px">Skipped: ${esc(r.last_error || '')}</div>` : r.last_status === 'ok' ? `<div class="xs muted" style="margin-top:4px">${r.last_draft_count} draft${r.last_draft_count === 1 ? '' : 's'} to Approvals</div>` : ''}
+            <div class="row" style="margin-top:6px"><button class="btn btn-sm" data-rrun="${r.id}" ${a.enabled ? '' : 'disabled'}>${icon('play')} Run now</button><button class="btn btn-sm btn-ghost" data-redit="${r.id}">${t('c.edit')}</button><button class="btn btn-sm btn-ghost" data-rdel="${r.id}" style="margin-left:auto" title="Delete routine">${icon('trash')}</button></div></div>`).join('')
+            : `<p class="small muted" style="margin-top:6px">${usable ? 'None yet. A routine runs this agent on a schedule and saves drafts to Approvals.' : 'Available once this agent is built.'}</p>`}
+          ${routines.some((r) => r.enabled) ? `<p class="xs muted" style="margin-top:6px">${icon('clock')} Runs once a day around ${runTime()} your time.</p>` : ''}
           <div class="notice neutral xs" style="margin-top:14px">Cannot publish, send messages or edit HighLevel without your confirmation.</div>
         </div>
       </div>`;
@@ -58,6 +77,21 @@ export async function render(el, ctx) {
     const sc = $('#mscroll', el); sc.scrollTop = sc.scrollHeight;
     $('#aen', el).onchange = async (e) => {  const r = await versionedUpdate('agents', a, { enabled: e.target.checked }).catch((x) => toast(x.message)); if (r?.conflict) toast('Changed elsewhere. Reloaded.'); await loadAgents(); draw(); };
     const ed = $('#aedit', el); if (ed) ed.onclick = () => editInstructions(a);
+    const rn = $('#rnew', el); if (rn) rn.onclick = () => editRoutine(a, null);
+    el.querySelectorAll('[data-redit]').forEach((b) => b.onclick = () => editRoutine(a, routines.find((r) => r.id === b.dataset.redit)));
+    el.querySelectorAll('[data-ren]').forEach((b) => b.onchange = async (e) => {
+      try { await q(live.sb.from('agent_routines').update({ enabled: e.target.checked }).eq('id', b.dataset.ren).select('id')); toast(e.target.checked ? 'Routine on' : 'Routine off'); } catch (x) { toast(x.message); }
+      await loadThread(); draw();
+    });
+    el.querySelectorAll('[data-rdel]').forEach((b) => b.onclick = () => modal({ title: 'Delete routine', body: '<p class="small">Drafts it already made stay in Approvals.</p>',
+      foot: `<button class="btn" data-close>${t('c.cancel')}</button><button class="btn btn-danger solid" data-ok>Delete</button>`,
+      onMount: (ov, close) => { ov.querySelector('[data-ok]').onclick = async () => { try { await q(live.sb.from('agent_routines').delete().eq('id', b.dataset.rdel).select('id')); close(); await loadThread(); draw(); } catch (x) { toast(x.message); } }; } }));
+    el.querySelectorAll('[data-rrun]').forEach((b) => b.onclick = async () => {
+      b.disabled = true; b.textContent = 'Running...';
+      try { const r = await api('studio', { body: { action: 'routine_run', id: b.dataset.rrun } }); toast(`${r.drafts} draft${r.drafts === 1 ? '' : 's'} saved to Approvals`); ctx.refreshNav(); }
+      catch (x) { toast(x.message, { ms: 7000 }); }
+      await loadThread(); draw();
+    });
     const nt = $('#newt', el); if (nt) nt.onclick = () => { thread = null; msgs = []; draw(); };
     $('#asend', el).onclick = send;
     $('#amsg', el).onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } };
@@ -82,6 +116,37 @@ export async function render(el, ctx) {
         try { const r = await versionedUpdate('agents', a, { instructions: ov.querySelector('#ins').value.trim() }); if (r.conflict) toast('Changed elsewhere. Your edit was not saved.'); close(); await loadAgents(); draw(); }
         catch (e) { toast(e.message); }
       }; } });
+  }
+
+  function editRoutine(a, r) {
+    const p = PRESETS[a.slug] || ['weekly', '', ''];
+    const v = r || { cadence: p[0], title: p[1], prompt: p[2], weekday: 1, day_of_month: 1, language: 'en', enabled: true };
+    modal({ title: r ? 'Edit routine' : `New routine for ${a.name}`, sub: 'Each run saves drafts to Approvals. Nothing is published, posted or sent.', wide: true,
+      body: `<div class="stack"><div class="field"><label for="rt">Name</label><input class="input" id="rt" maxlength="80" value="${esc(v.title || '')}" placeholder="Weekly content plan"></div>
+        <div class="row wrap"><div class="field"><label>How often</label><div class="seg" id="rc">${['daily', 'weekly', 'monthly'].map((c) => `<button data-c="${c}" class="${v.cadence === c ? 'active' : ''}">${c[0].toUpperCase() + c.slice(1)}</button>`).join('')}</div></div>
+          <div class="field" id="rwd"><label for="rw">Day</label><select class="input" id="rw">${DAYS.map((d, i) => `<option value="${i}" ${(v.weekday ?? 1) === i ? 'selected' : ''}>${d}</option>`).join('')}</select></div>
+          <div class="field" id="rdm"><label for="rd">Day of month</label><select class="input" id="rd">${Array.from({ length: 28 }, (_, i) => `<option ${(v.day_of_month ?? 1) === i + 1 ? 'selected' : ''}>${i + 1}</option>`).join('')}</select></div>
+          <div class="field"><label>Language</label><div class="seg" id="rl"><button data-l="en" class="${v.language !== 'fr-qc' ? 'active' : ''}">English</button><button data-l="fr-qc" class="${v.language === 'fr-qc' ? 'active' : ''}">Français (QC)</button></div></div></div>
+        <div class="field"><label for="rp">What should ${esc(a.name)} do each time?</label><textarea class="textarea" id="rp" style="min-height:140px" maxlength="4000">${esc(v.prompt || '')}</textarea>
+          <div class="hint">Runs once a day around ${runTime()} your time. Brand DNA, the Brain and live numbers are added automatically.</div></div></div>`,
+      foot: `<button class="btn" data-close>${t('c.cancel')}</button><button class="btn btn-primary" data-ok>${t('c.save')}</button>`,
+      onMount: (ov, close) => {
+        let cadence = v.cadence, language = v.language || 'en';
+        const sync = () => { ov.querySelector('#rwd').style.display = cadence === 'weekly' ? '' : 'none'; ov.querySelector('#rdm').style.display = cadence === 'monthly' ? '' : 'none'; };
+        ov.querySelectorAll('[data-c]').forEach((b) => b.onclick = () => { cadence = b.dataset.c; ov.querySelectorAll('[data-c]').forEach((x) => x.classList.toggle('active', x === b)); sync(); });
+        ov.querySelectorAll('[data-l]').forEach((b) => b.onclick = () => { language = b.dataset.l; ov.querySelectorAll('[data-l]').forEach((x) => x.classList.toggle('active', x === b)); });
+        sync();
+        ov.querySelector('[data-ok]').onclick = async () => {
+          const row = { title: ov.querySelector('#rt').value.trim() || null, cadence, language, prompt: ov.querySelector('#rp').value.trim(),
+            weekday: cadence === 'weekly' ? +ov.querySelector('#rw').value : null, day_of_month: cadence === 'monthly' ? +ov.querySelector('#rd').value : null };
+          if (!row.prompt) return toast('Write what the routine should do');
+          try {
+            if (r) await q(live.sb.from('agent_routines').update(row).eq('id', r.id).select('id'));
+            else await q(live.sb.from('agent_routines').insert({ ...row, owner_id: live.user.id, agent_id: a.id, enabled: true }).select('id'));
+            close(); toast(r ? 'Routine saved' : 'Routine added'); await loadThread(); draw();
+          } catch (e) { toast(e.message); }
+        };
+      } });
   }
 
   el.innerHTML = '<div class="empty">Loading your team...</div>';

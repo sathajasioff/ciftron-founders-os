@@ -42,6 +42,18 @@
     },
     "api/voice.js": {
       "maxDuration": 30
+    },
+    "api/mcp.js": {
+      "maxDuration": 60
+    },
+    "api/cron.js": {
+      "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron",
+      "schedule": "30 10 * * *"
+    }
+  ]
 }

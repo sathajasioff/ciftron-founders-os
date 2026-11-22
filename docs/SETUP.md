@@ -166,3 +166,60 @@ Goals are not drafts: the AI only turns your sentence into a measurable target, 
 
 - `OPENROUTER_IMAGE_MODEL` (default `google/gemini-2.5-flash-image`; you can also pick a model per image in Graphics)
 - `ELEVENLABS_VOICE_ID` and `ELEVENLABS_MODEL` (default `eleven_multilingual_v2`, which also speaks French)
+
+# Phase 6 update (MCP server and routines)
+
+1. **Required:** in Supabase SQL Editor, run `supabase/migrations/20261122000005_mcp_routines.sql`.
+2. **For routines:** in Vercel → Project → Settings → Environment Variables, add `CRON_SECRET`. Make a value with `openssl rand -base64 32` (at least 16 characters). Redeploy. Vercel sends it to `/api/cron` on its own; you never type it anywhere else.
+3. Reload the OS.
+
+## MCP access (Claude Code, Codex, other MCP clients)
+
+1. **Connections and Settings → MCP access → New token.** Name it after the device or tool. Pick **Read only** or **Read and write**.
+2. Copy the token from the window. It is shown once; only a hash is stored. Do not paste it into chats or commit it to a repo.
+3. In a terminal, for Claude Code:
+
+```bash
+claude mcp add --transport http founders-os https://YOUR-DOMAIN/api/mcp --header "Authorization: Bearer cfos_..."
+```
+
+Add `--scope user` to use it in every project. If your Claude Code version drops the header, use:
+
+```bash
+claude mcp add-json founders-os '{"type":"http","url":"https://YOUR-DOMAIN/api/mcp","headers":{"Authorization":"Bearer cfos_..."}}'
+```
+
+Other clients: add an HTTP (Streamable HTTP) MCP server with the URL `https://YOUR-DOMAIN/api/mcp` and the header `Authorization: Bearer <token>`.
+
+| Read tools (both token types) | Write tools (read and write only) |
+|---|---|
+| `get_brand_dna`, `search_brain`, `list_facts`, `list_offers` | `create_draft`: adds a draft to Approvals |
+| `list_approvals`, `get_approval`, `list_content`, `list_goals` | `update_draft`: edits a draft that is still pending |
+| `list_email_sequences`, `list_funnels`, `list_programs`, `list_vault`, `list_agents` | `update_content_item`: stage, date, channel, title, hook, notes |
+| `get_business_snapshot` (pipeline counts, ads, approvals, content, goals) | `update_fact`: changed text goes back to proposed |
+| `get_ads_summary` (Meta Ads, read-only) | `update_goal`: target, due date; current value only on manual goals |
+| | `add_vault_item`: save a link or text |
+
+What MCP can never do:
+
+- Read API keys, connection settings, or HighLevel contacts and conversations. Pipeline data is counts only.
+- Publish, post, send, or write to HighLevel. Approvals and HighLevel sends stay in the OS, with your confirm click.
+- Overwrite text you wrote, unless the client passes `overwrite_my_text: true` (tell it to only when you asked for that change).
+- Save over newer work: every edit must send the row version it read.
+
+Every MCP write appears under **Edits made through MCP** with the previous value. **Undo** restores it. Undo refuses if the row changed after that edit, so later work is never lost. **Revoke** cuts a token off immediately.
+
+## Routines
+
+1. **AI Team** → pick an agent → **Routines → Add**.
+2. Choose daily, weekly (pick the day) or monthly (day 1 to 28), the language, and what the agent should do. Each agent starts with a suggestion you can edit.
+3. The cron runs once a day around 10:30 UTC (about 5:30 am in Toronto in winter, 6:30 am in summer). On the free Vercel plan the time can drift by up to an hour.
+4. Each run saves drafts to **Approvals**, tagged `routine`. Nothing publishes or sends.
+5. **Run now** runs it immediately. A routine that ran today (by hand or by the cron) does not run again the same day.
+6. If a run fails (for example, no Anthropic credits), the error shows on the routine card.
+
+Up to 6 routines run per day. Each run costs one Claude call, plus one OpenAI embedding when the OpenAI key is saved.
+
+## Optional Vercel env vars
+
+- `APP_ORIGIN`: extra browser origins allowed to call `/api/mcp`, comma separated. Terminal clients need nothing.

@@ -24,6 +24,7 @@ const SUPABASE_STUB = `
   grant all on storage.objects to authenticated;
   alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
   alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
+  alter default privileges in schema public grant execute on functions to anon, authenticated, service_role;
   insert into auth.users values ('${A}', 'owner@example.com'), ('${B}', 'other@example.com');
 `;
 
@@ -111,4 +112,39 @@ test('storage: files only under the owner folder', async () => {
   await assert.rejects(as(A, `insert into storage.objects (bucket_id, name) values ('brain', '${B}/doc.pdf')`), /row-level security/);
   const r = await as(B, `select * from storage.objects where bucket_id = 'brain'`);
   assert.equal(r.rows.length, 0);
+});
+
+// Phase 6
+const asService = async (sql, params) => {
+  await db.exec(`reset role; set role service_role;`);
+  try { return await db.query(sql, params); } finally { await db.exec('reset role;'); }
+};
+
+test('match_chunks_for: browser roles cannot call it; the service role gets one owner only', async () => {
+  await assert.rejects(as(A, `select * from match_chunks_for($1, $2::extensions.vector, 5, 0.0)`, [A, vec(1)]), /permission denied/);
+  const r = await asService(`select source_name, content from match_chunks_for($1, $2::extensions.vector, 5, 0.0)`, [A, vec(1)]);
+  assert.ok(r.rows.length >= 1);
+  assert.ok(r.rows.every((x) => x.source_name === 'A notes'));
+});
+
+test('mcp tables: owner can read, never write from the browser, and never sees token hashes', async () => {
+  const { rows: [tok] } = await db.query(`insert into mcp_tokens (owner_id, name, token_hash, scope, token_prefix) values ($1, 'cli', 'abc123', 'read', 'cfos_abc') returning id`, [A]);
+  const r = await as(A, 'select id, name, scope, token_prefix from mcp_tokens');
+  assert.equal(r.rows.length, 1);
+  await assert.rejects(as(A, 'select token_hash from mcp_tokens'), /permission denied/);
+  assert.equal((await as(B, 'select id, name from mcp_tokens')).rows.length, 0);
+  await assert.rejects(as(A, `insert into mcp_tokens (owner_id, name, token_hash, scope) values ($1, 'x', 'y', 'read')`, [A]), /row-level security|permission denied/);
+  await assert.rejects(as(A, `update mcp_tokens set scope = 'read_write' where id = $1`, [tok.id]), /permission denied/);
+  await db.query(`insert into mcp_edit_log (owner_id, token_id, action, tool, table_name, row_id, previous_value, new_value, row_version) values ($1, $2, 'update', 'update_goal', 'goals', gen_random_uuid(), '{}', '{}', 2)`, [A, tok.id]);
+  assert.equal((await as(A, 'select id from mcp_edit_log')).rows.length, 1);
+  await assert.rejects(as(A, `update mcp_edit_log set undone_at = now()`), /permission denied/);
+  await assert.rejects(as(A, `insert into mcp_edit_log (owner_id, table_name, row_id) values ($1, 'goals', gen_random_uuid())`, [A]), /row-level security|permission denied/);
+});
+
+test('agent_routines: schedule columns are checked and rows stay with their owner', async () => {
+  const { rows: [ag] } = await as(A, `insert into agents (slug, name) values ('content-strategist', 'Content Strategist') returning id`);
+  await as(A, `insert into agent_routines (agent_id, cadence, prompt, weekday, language, enabled) values ($1, 'weekly', 'Plan next week', 1, 'fr-qc', true)`, [ag.id]);
+  await assert.rejects(as(A, `insert into agent_routines (agent_id, cadence, prompt, weekday) values ($1, 'weekly', 'x', 9)`, [ag.id]), /check/);
+  await assert.rejects(as(A, `insert into agent_routines (agent_id, cadence, prompt, day_of_month) values ($1, 'monthly', 'x', 31)`, [ag.id]), /check/);
+  assert.equal((await as(B, 'select * from agent_routines')).rows.length, 0);
 });

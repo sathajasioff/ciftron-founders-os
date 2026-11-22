@@ -1,5 +1,7 @@
 // Data export and the danger zone. HighLevel data is never touched here.
 import { handler, requireOwner, HttpError, audit } from './_lib/http.js';
+import { newToken, hashToken, tokenPrefix } from './_lib/mcp.js';
+import { undoEdit } from './_lib/mcp-tools.js';
 
 // Everything the OS stores, minus secrets and embeddings.
 const EXPORT_TABLES = ['profiles', 'offers', 'brain_sources', 'brain_facts', 'style_guides', 'brand_dna', 'agents', 'threads', 'messages',
@@ -26,6 +28,40 @@ export default handler(['POST'], async (req, body) => {
     out.brain_sources = out.brain_sources.map(({ content, ...s }) => ({ ...s, content_chars: content ? content.length : 0 }));
     await audit(db, user.id, 'export', 'account', user.id);
     return out;
+  }
+
+  // MCP tokens. The plain token is returned once and only its hash is stored.
+  if (body.action === 'mcp_token_create') {
+    const name = String(body.name || '').trim().slice(0, 60);
+    if (!name) throw new HttpError(400, 'Give the token a name, like "Claude Code laptop"');
+    const scope = body.scope === 'read_write' ? 'read_write' : 'read';
+    const { count } = await admin.from('mcp_tokens').select('id', { count: 'exact', head: true }).eq('owner_id', user.id).is('revoked_at', null);
+    if (count >= 10) throw new HttpError(400, 'Up to 10 active tokens. Revoke one first.');
+    const token = newToken();
+    const { data, error } = await admin.from('mcp_tokens').insert({ owner_id: user.id, name, scope, token_hash: hashToken(token), token_prefix: tokenPrefix(token) })
+      .select('id, name, scope, token_prefix, created_at').single();
+    if (error) throw new HttpError(500, error.message);
+    await audit(db, user.id, 'mcp_token_created', 'mcp_tokens', data.id, { name, scope });
+    return { token, ...data };
+  }
+
+  if (body.action === 'mcp_token_revoke') {
+    const { data, error } = await admin.from('mcp_tokens').update({ revoked_at: new Date().toISOString() })
+      .eq('owner_id', user.id).eq('id', String(body.id || '')).is('revoked_at', null).select('id').maybeSingle();
+    if (error) throw new HttpError(400, error.message);
+    if (!data) throw new HttpError(404, 'Token not found or already revoked');
+    await audit(db, user.id, 'mcp_token_revoked', 'mcp_tokens', data.id);
+    return { ok: true };
+  }
+
+  if (body.action === 'mcp_undo') {
+    try {
+      const out = await undoEdit(admin, user.id, Number(body.id));
+      await audit(db, user.id, 'mcp_undo', 'mcp_edit_log', body.id);
+      return out;
+    } catch (e) {
+      throw new HttpError(409, e.message);
+    }
   }
 
   if (body.action === 'delete') {

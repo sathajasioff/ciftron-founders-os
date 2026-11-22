@@ -41,8 +41,10 @@ def _api(route):
     elif path == 'studio':
         a = body.get('action')
         out = {'remix': {'drafts': 2}, 'email_sequence': {'sequence_id': 'es1'}, 'funnel_build': {'version_no': 2}, 'goal': {'goal_id': 'g1'}, 'goals_sync': {'updated': 0, 'sources': {}},
-               'program_propose': {'approval_id': 'apx'}, 'vault_brief': {'brief': {}}, 'learning_refresh': {'signals': 1}, 'research_fetch': {'posts': 12, 'median': 1800},
+               'program_propose': {'approval_id': 'apx'}, 'vault_brief': {'brief': {}}, 'learning_refresh': {'signals': 1}, 'routine_run': {'status': 'ok', 'drafts': 2}, 'research_fetch': {'posts': 12, 'median': 1800},
                'graphic': {'b64': 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP4z8DwHwyBNAOU8R8AjjgL9YdRIygAAAAASUVORK5CYII=', 'media_type': 'image/png', 'prompt': 'p', 'model': 'm', 'cost': 0.04}, 'rewrite_email': {'subject': 'New subject', 'preview': '', 'body': 'Shorter body'}}.get(a, {'ok': True})
+    elif path == 'account' and body.get('action') == 'mcp_token_create': out = {'token': 'cfos_' + 'T' * 43, 'id': 'mt2', 'name': body['name'], 'scope': body['scope'], 'token_prefix': 'cfos_TTTTTTT'}
+    elif path == 'account' and body.get('action') == 'mcp_undo': out = {'ok': True, 'message': 'Restored the previous value'}
     elif path == 'meta': out = {'range': 'last_7d', 'spend': 198.8, 'leads': 14, 'cpl': 14.2, 'previous': {'spend': 160, 'leads': 10, 'cpl': 16}, 'campaigns': [{'id': '1', 'name': 'Mortgage leads', 'spend': 198.8, 'leads': 14, 'cpl': 14.2}]}
     elif path == 'chat': out = {'thread_id': 't1', 'messages': [], 'drafts': [{'id': 'new', 'title': 'Hooks', 'type': 'Hooks'}], 'warnings': ['Brain search skipped: OpenAI has no credits left.']}
     elif path == 'brain' and body.get('action') == 'search': out = {'results': [{'source_name': 'about_me', 'content': 'mortgage brokers', 'similarity': 0.82}]}
@@ -293,9 +295,37 @@ try:
         # 24. AI Team: every agent usable now
         pg.goto(base + '#team'); pg.wait_for_selector('[data-agent=researcher]'); pg.locator('[data-agent=researcher]').click()
         assert not pg.locator('#asend').is_disabled() or pg.locator('#aen').is_checked() is False
+
+        # 25. Phase 6: routines on an agent, run now sends the routine id
+        pg.goto(base + '#team'); pg.wait_for_selector('[data-agent=content-strategist]'); pg.locator('[data-agent=content-strategist]').click()
+        pg.click('#rnew'); pg.wait_for_selector('#rp')
+        assert 'five short video ideas' in pg.input_value('#rp')
+        pg.click('.modal [data-c=weekly]'); pg.select_option('#rw', '3'); pg.click('.modal [data-l=fr-qc]'); pg.fill('#rt', 'Plan de la semaine')
+        pg.click('.modal [data-ok]'); pg.wait_for_selector('text=Plan de la semaine')
+        rt = pg.evaluate("window.__FAKE_DB__.agent_routines[0]")
+        assert rt['cadence'] == 'weekly' and rt['weekday'] == 3 and rt['language'] == 'fr-qc' and rt['enabled'] and rt['agent_id'] == 'ag1', rt
+        assert pg.locator('text=Every Wednesday').count() == 1
+        pg.locator('[data-rrun]').click(); pg.wait_for_selector('text=2 drafts saved to Approvals')
+        assert [c for c in calls if c[0] == 'studio'][-1][2] == {'action': 'routine_run', 'id': rt['id']}
+        pg.locator('label.toggle:has([data-ren])').click(); pg.wait_for_selector('text=Routine off')
+        assert pg.evaluate("window.__FAKE_DB__.agent_routines[0].enabled") is False
+        shot(pg, 'routines')
+
+        # 26. Phase 6: MCP tokens and the edit log in Settings
+        pg.goto(base + '#connections'); pg.wait_for_selector('text=Claude Code laptop')
+        assert pg.locator('#mcpurl').inner_text().endswith('/api/mcp')
+        assert pg.locator('text=Edited goal (current_value)').count() == 1
+        pg.click('#mcpnew'); pg.fill('#mtn', 'Codex'); pg.click('.modal [data-s=read]'); pg.click('.modal [data-ok]')
+        pg.wait_for_selector('text=Copy your token now')
+        assert pg.locator('.modal').inner_text().count('cfos_' + 'T' * 43) == 2, 'token and command shown once'
+        assert [c for c in calls if c[0] == 'account'][-1][2] == {'action': 'mcp_token_create', 'name': 'Codex', 'scope': 'read'}
+        pg.click('.modal [data-close]')
+        pg.locator('[data-undo="7"]').click(); pg.wait_for_selector('text=Restored the previous value')
+        assert [c for c in calls if c[0] == 'account'][-1][2] == {'action': 'mcp_undo', 'id': 7}
+        shot(pg, 'mcp')
         b.close()
 finally:
     srv.terminate()
 if errors:
     print('\n'.join(errors)); sys.exit(1)
-print('OK: live mode e2e (login, Brain, keys, Approvals, Chat, Team, Pipeline, HighLevel writes, Jarvis, Content, Emails, Funnels, Graphics, Vault, Goals, Programs)')
+print('OK: live mode e2e (login, Brain, keys, Approvals, Chat, Team, Pipeline, HighLevel writes, Jarvis, Content, Emails, Funnels, Graphics, Vault, Goals, Programs, Routines, MCP)')

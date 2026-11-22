@@ -41,7 +41,7 @@ export function render(el, ctx = {}) {
           <div class="eyebrow" style="margin-top:14px">${t('team.history')}</div>
           <ul class="small" style="padding-left:18px;margin:6px 0">${(agentHistory[a.id] || ['Nothing yet']).map((h) => `<li>${esc(h)}</li>`).join('')}</ul>
           <div class="eyebrow" style="margin-top:14px">${t('team.routines')}</div>
-          <div class="small muted" style="margin-top:6px">${a.id === 'cs' ? 'Weekly: Monday 9 AM, 10 hook ideas (drafts only). Phase 6.' : 'None'}</div>
+          <div class="small muted" style="margin-top:6px">${a.id === 'cs' ? 'Weekly: Monday 9 AM, 10 hook ideas (drafts only).' : 'None'}</div>
           <div class="notice neutral xs" style="margin-top:14px">Cannot publish, send messages or edit HighLevel without your confirmation.</div>
         </div>
       </div>`;

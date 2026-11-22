@@ -10,8 +10,8 @@ A private, single-owner AI command center on top of HighLevel. HighLevel is the 
 | 2 | Supabase auth, schema with RLS, encrypted keys, full Brain | **Done** (setup: `docs/SETUP.md`) |
 | 3 | AI Chat with Brand DNA, Approvals queue, Content Strategist agent | **Done** (run migration 003) |
 | 4 | HighLevel + Meta Ads (read-only) connections, Pipeline, confirmed writes | **Done** (scopes in `docs/SETUP.md`) |
-| 5 | Creation studio modules you confirm, remaining agents | |
-| 6 | MCP server, recurring routines (Jarvis voice moved into Phase 5) | |
+| 5 | Jarvis home with voice, creation studio, all nine agents | **Done** (run migration 004) |
+| 6 | MCP server with revocable tokens and undo, recurring routines | **Done** (run migration 005, set `CRON_SECRET`) |
 | 7 | os.ciftron.com, security headers, error logging, tests | |
 
 ## Live vs demo

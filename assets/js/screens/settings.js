@@ -34,7 +34,7 @@ export function render(el, ctx = {}) {
         <div class="card"><div class="card-head"><h3>${t('set.log')}</h3><span class="xs muted">Every write is logged</span></div>
           <div class="table-wrap" style="border:0"><table class="table"><thead><tr><th>When</th><th>Action</th><th>Target</th><th>Status</th></tr></thead><tbody>
           ${writeLog.map((w) => `<tr><td class="small muted" style="white-space:nowrap">${esc(w.when)}</td><td class="small">${esc(w.action)}</td><td class="small">${esc(w.target)}</td><td><span class="chip ${w.status === 'Sent' ? 'ok' : ''}">${esc(w.status)}</span></td></tr>`).join('')}</tbody></table></div></div>
-        <div class="card stack"><div class="card-head" style="margin:0"><h3>MCP access tokens</h3><span class="chip">Phase 6</span></div>
+        <div class="card stack"><div class="card-head" style="margin:0"><h3>MCP access tokens</h3><span class="chip">Demo</span></div>
           <p class="small muted">Let Claude Code or Codex work inside the OS through /api/mcp. Read-only or read-write, revocable. Secrets and HighLevel conversations are never exposed.</p>
           <div><button class="btn btn-sm" disabled>${icon('plus')} New token</button></div></div>
       </div>

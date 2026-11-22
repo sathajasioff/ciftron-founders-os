@@ -38,6 +38,9 @@ const db = (window.__FAKE_DB__ ||= {
   graphics: [], graphic_versions: [], brand_board: [],
   vault_items: [{ id: 'v1', owner_id: OWNER, kind: 'url', title: 'Clean pricing page', url: 'https://example.com', note: 'Layout', created_at: old }],
   goals: [], goal_items: [],
+  agent_routines: [],
+  mcp_tokens: [{ id: 'mt1', owner_id: OWNER, name: 'Claude Code laptop', scope: 'read_write', token_prefix: 'cfos_AbCdEfG', last_used_at: '2026-11-21T10:00:00Z', revoked_at: null, created_at: old }],
+  mcp_edit_log: [{ id: 7, owner_id: OWNER, token_id: 'mt1', action: 'update', tool: 'update_goal', table_name: 'goals', row_id: 'g9', previous_value: { current_value: 2 }, new_value: { current_value: 5 }, undone_at: null, created_at: '2026-11-21T11:00:00Z' }],
   programs: [], program_modules: [], program_lessons: [],
   approvals: [
     { id: 'ap1', owner_id: OWNER, type: 'Hooks', title: '5 Reel hooks: mortgage follow-up', payload: { body: '1. Your leads are not cold. Your follow-up is slow.\n2. [PROOF NEEDED]' }, tags: ['mortgage'], language: 'en', source_agent: 'Content Strategist', target_module: 'content', status: 'pending', trashed_at: null, authored_by: 'ai', version: 1, created_at: old, updated_at: old },

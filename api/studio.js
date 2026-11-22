@@ -9,6 +9,7 @@ import {
   PROGRAM_SYSTEM, validateProgram, programText, VAULT_SYSTEM, validateBrief, briefText, graphicPrompt, aspectFor, scorePosts, mapInstagram, mapYouTube,
   computeSignals, signalsBlock, SEQUENCE_TYPES,
 } from './_lib/studio.js';
+import { runRoutine } from './_lib/routines.js';
 
 export const config = { maxDuration: 60 };
 const one = async (q) => { const { data, error } = await q; if (error) throw new HttpError(400, error.message); return data; };
@@ -21,6 +22,17 @@ export default handler(['POST'], async (req, body) => {
   const ask = async (system, prompt, maxTokens = 3000) => claude(await getSecret(admin, user.id, 'anthropic', 'api_key'), { system, prompt, maxTokens });
   const withDna = async (sys) => { const d = await dna(); return `${sys}\n\n# Brand DNA\n${d || 'Not compiled yet. Do not assume facts about the business.'}`; };
   const approval = async (row) => (await one(db.from('approvals').insert({ owner_id: user.id, authored_by: 'ai', ...row }).select('id').single())).id;
+
+  // Run a routine now, from AI Team. Same path as the daily cron: drafts go to Approvals.
+  if (a === 'routine_run') {
+    const r = await one(db.from('agent_routines').select('*').eq('id', String(body.id || '')).maybeSingle());
+    if (!r) throw new HttpError(404, 'Routine not found');
+    const tz = (await one(db.from('profiles').select('timezone').maybeSingle()))?.timezone;
+    const out = await runRoutine(admin, user.id, { ...r, enabled: true }, { timeZone: tz });
+    if (out.status === 'error') throw new HttpError(400, out.error);
+    if (out.status === 'skipped') throw new HttpError(400, 'The agent is turned off. Turn it on in AI Team first.');
+    return out;
+  }
 
   if (a === 'remix') {
     const agent = AGENT_SEEDS.find((x) => x.slug === 'content-strategist');

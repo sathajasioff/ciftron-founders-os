@@ -4,6 +4,7 @@ import { head, icon, esc, toast, modal, $ } from '../ui.js';
 import { live, api, q } from '../live.js';
 import { setTheme, paintChrome } from '../app.js';
 import { hlWrite } from '../hl-ui.js';
+import { mountMcp } from '../mcp-ui.js';
 
 const HL_SCOPES = {
   read: ['locations.readonly', 'opportunities.readonly', 'contacts.readonly', 'products.readonly', 'funnels/funnel.readonly', 'socialplanner/account.readonly', 'locations/customValues.readonly'],
@@ -63,11 +64,10 @@ export async function render(el) {
         <div class="card"><div class="card-head"><h3>${t('set.log')}</h3><span class="xs muted">Every write is logged</span></div>
           ${log.length ? `<div class="table-wrap" style="border:0"><table class="table"><thead><tr><th>When</th><th>Action</th><th>Target</th><th>Status</th></tr></thead><tbody>
           ${log.map((w) => `<tr><td class="small muted" style="white-space:nowrap">${new Date(w.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</td><td class="small">${esc(w.action)}</td><td class="small">${esc(w.target)}</td><td><span class="chip ${w.status === 'sent' ? 'ok' : 'danger'}">${esc(w.status)}</span></td></tr>`).join('')}</tbody></table></div>`
-          : '<p class="small muted">No HighLevel writes yet. They start in Phase 4.</p>'}</div>
+          : '<p class="small muted">No HighLevel writes yet.</p>'}</div>
         <div class="card stack" id="cvcard"><div class="card-head" style="margin:0"><h3>HighLevel custom values (OS_)</h3>${providers.find((p) => p.id === 'highlevel')?.connected ? '<button class="btn btn-sm" id="cvload">Load</button>' : '<span class="chip">Connect HighLevel</span>'}</div>
           <p class="small muted">The OS can only create or change custom values whose name starts with OS_. Each change is previewed and logged.</p><div id="cvlist"></div></div>
-        <div class="card stack"><div class="card-head" style="margin:0"><h3>MCP access tokens</h3><span class="chip">Phase 6</span></div>
-          <p class="small muted">Let Claude Code or Codex work inside the OS through /api/mcp. Read-only or read-write, revocable. Secrets and HighLevel conversations are never exposed.</p></div>
+        <div class="card stack" id="mcpcard" style="grid-column:1/-1"></div>
       </div>
 
       <div class="card" style="margin-top:16px;border-color:color-mix(in srgb,var(--danger) 45%,transparent)">
@@ -95,6 +95,7 @@ export async function render(el) {
       } catch (e) { toast(e.message); }
       b.disabled = false;
     };
+    mountMcp($('#mcpcard', el));
     const cvl = $('#cvload', el); if (cvl) cvl.onclick = () => loadCustomValues();
     const del = $('#del', el), delbtn = $('#delbtn', el);
     del.oninput = () => { delbtn.disabled = del.value.trim() !== 'delete'; };
