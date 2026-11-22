@@ -24,7 +24,7 @@ export async function render(el, ctx = {}) {
       <p class="jv-summary" id="jv-summary">Reading your workspace...</p>
       <form class="jv-bar" id="jv-form" autocomplete="off">
         ${icon('search')}<input id="jv-q" placeholder="Tell Jarvis what you need. Try: what needs me today?" aria-label="Ask Jarvis">
-        <button type="button" class="btn btn-sm" id="jv-talk">${icon('mic')} Talk</button><button class="btn btn-sm btn-accent" id="jv-ask">Ask</button>
+        <button type="button" class="btn btn-sm" id="jv-talk">${icon('mic')} Talk</button><button type="button" class="btn btn-sm" id="jv-conv" aria-pressed="false" title="Hands-free: Jarvis keeps listening after each answer. Say stop or goodbye to end.">${icon('sparkle')} <span>Conversation</span></button><button class="btn btn-sm btn-accent" id="jv-ask">Ask</button>
       </form>
       <div class="jv-prompts">${PROMPTS.map((p) => `<button class="jv-chip" data-p="${esc(p)}">${esc(p)}</button>`).join('')}<button class="jv-chip" id="jv-hold">${icon('x')} <span>Hold drafting agents</span></button></div>
       <div class="jv-answer hidden" id="jv-answer" role="status"></div>
@@ -46,7 +46,26 @@ export async function render(el, ctx = {}) {
     $('#jv-talk', el).classList.toggle('btn-primary', s === 'listening');
   };
   const core = createCore($('#jv-canvas', el), { nodes, onNode: (n) => { if (n.key === 'meta') return $('#jv-below', el).scrollIntoView({ behavior: 'smooth' }); location.hash = '#' + (ROUTE[n.key] || n.key); }, onCore: () => talk() });
-  const voice = createVoice({ onState: setMode, onLevel: (v) => core.setLevel(v), onHeard: (text) => ask(text, true), onError: (m) => toast(m, { ms: 6000 }) });
+  // Hands-free conversation: after each spoken answer Jarvis listens again. Ends on a stop phrase, two silences, an error, or leaving the screen.
+  const conv = { on: false, misses: 0 };
+  const STOP = /^\s*(stop|stop listening|goodbye|bye|that'?s all|thanks,? jarvis|thank you,? jarvis|end conversation|arr[eê]te|au revoir|merci,? jarvis|c'?est tout)\W*$/i;
+  const setConv = (on, note) => {
+    conv.on = on; conv.misses = 0;
+    const b = $('#jv-conv', el); if (b) { b.setAttribute('aria-pressed', on); b.classList.toggle('btn-primary', on); b.querySelector('span').textContent = on ? 'End conversation' : 'Conversation'; }
+    if (!on) { voice.stop(); if (note) toast(note); }
+  };
+  const listenAgain = () => setTimeout(() => { if (conv.on && el.isConnected && !document.hidden) voice.listen(); else if (conv.on) setConv(false); }, 350);
+  const voice = createVoice({
+    onState: (s) => { setMode(s); if (conv.on && s === 'listening') $('#jv-mode', el).textContent = 'LISTENING · CONVERSATION'; },
+    onLevel: (v) => core.setLevel(v),
+    onHeard: (text) => { conv.misses = 0; if (conv.on && STOP.test(text)) { setConv(false); voice.speak(getLang() === 'fr' ? 'D\'accord.' : 'Okay.'); return; } ask(text, true); },
+    onSpoken: () => { if (conv.on) listenAgain(); },
+    onError: (m, code) => {
+      if (conv.on && code === 'no-speech' && ++conv.misses < 2) return listenAgain();
+      if (conv.on) return setConv(false, code === 'no-speech' ? 'Conversation ended: I did not hear anything.' : m);
+      toast(m, { ms: 6000 });
+    },
+  });
 
   const clock = () => { const c = $('#jv-clock', el); if (!c) return clearInterval(ti); c.textContent = new Date().toLocaleTimeString('en-GB'); };
   const ti = setInterval(clock, 1000); clock();
@@ -60,7 +79,7 @@ export async function render(el, ctx = {}) {
       if (live.on) reply = (await api('chat', { body: { mode: 'jarvis', message: text, history } })).reply;
       else { await new Promise((r) => setTimeout(r, 600)); reply = demoReply(text); }
     } catch (e) {
-      setMode('online'); toast(e.message, { ms: 7000 }); return;
+      setMode('online'); toast(e.message, { ms: 7000 }); if (conv.on) setConv(false); return;
     }
     history.push({ role: 'user', content: text }, { role: 'assistant', content: reply });
     while (history.length > 8) history.shift();
@@ -72,7 +91,9 @@ export async function render(el, ctx = {}) {
 
   $('#jv-form', el).onsubmit = (e) => { e.preventDefault(); const v = $('#jv-q', el).value; $('#jv-q', el).value = ''; ask(v, false); };
   $('#jv-talk', el).onclick = talk;
-  $('#jv-stop', el).onclick = () => voice.stop();
+  $('#jv-conv', el).onclick = () => { if (conv.on) return setConv(false); if (!voice.canListen) return toast('Voice input needs Chrome, Edge or Safari.'); setConv(true); voice.listen(); };
+  $('#jv-stop', el).onclick = () => { setConv(false); voice.stop(); };
+  document.addEventListener('visibilitychange', function off() { if (!el.isConnected) return document.removeEventListener('visibilitychange', off); if (document.hidden && conv.on) setConv(false); });
   $('#jv-mute', el).onclick = (e) => { const __b = e.currentTarget; const m = !voice.isMuted(); voice.setMuted(m); __b.setAttribute('aria-pressed', m); __b.querySelector('span').textContent = m ? 'Unmute' : 'Mute'; };
   el.querySelectorAll('[data-p]').forEach((b) => b.onclick = () => ask(b.dataset.p, false));
   $('#jv-hold', el).onclick = holdAgents;
@@ -101,7 +122,7 @@ export async function render(el, ctx = {}) {
     await home.render(below);
     below.querySelector('.page-head')?.remove();
   } else {
-    $('#jv-summary', el).textContent = `9 of 9 agents are on, ${demo.approvals.filter((a) => a.status === 'pending').length} drafts waiting for you, 38 new leads this week. Demo data.`;
+    $('#jv-summary', el).textContent = `${demo.agents.filter((a) => a.enabled).length} of ${demo.agents.length} agents are on, ${demo.approvals.filter((a) => a.status === 'pending').length} drafts waiting for you, 38 new leads this week. Demo data.`;
     badge('team', demo.approvals.filter((a) => a.status === 'pending').length); badge('pipeline', 38);
   }
 

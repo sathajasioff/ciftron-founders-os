@@ -153,6 +153,7 @@ export function graphicPrompt({ format, headline, notes, board, brandStyle, hasR
     `Brand style: ${brandStyle || 'modern, premium, minimal, futuristic, clean'}. Colors: ${pal}. Typography: ${fonts}. Generous spacing, no clutter, no excessive gradients.`,
     headline ? `Large, legible headline text exactly: "${headline}".` : 'No text on the image.',
     notes ? `Details: ${notes}.` : '',
+    board?.design_rules ? `Owner's design rules (follow them): ${String(board.design_rules).replace(/\s+/g, ' ').slice(0, 1500)}.` : '',
     hasReference ? 'Use the reference image for layout and composition only. Do not copy its text, logos, people or faces.' : '',
     'No fake logos, no fake testimonials, no watermarks.',
   ].filter(Boolean).join(' ');

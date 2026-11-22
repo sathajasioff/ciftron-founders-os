@@ -1,6 +1,7 @@
 // AI Chat backed by /api/chat: Brand DNA + Brain search on every message, attachments, Strategy Room.
 import { t } from '../i18n.js';
 import { head, icon, esc, toast, md, toggleHtml, $ } from '../ui.js';
+import { attachData } from '../custom-ui.js';
 import { live, api, q } from '../live.js';
 
 const MAX_FILES = 8;
@@ -26,7 +27,7 @@ export async function render(el, ctx) {
             ${files.length ? `<div class="row wrap" style="margin-bottom:6px">${files.map((f, i) => `<span class="chip outline">${esc(f.name)} <button class="star" data-rmf="${i}" aria-label="Remove">${icon('x')}</button></span>`).join('')}</div>` : ''}
             <textarea id="prompt" rows="2" placeholder="${esc(t('chat.placeholder'))}" ${busy ? 'disabled' : ''}>${esc(ctx.params.get('q') || '')}</textarea>
             <div class="row between">
-              <div class="row"><label class="btn btn-sm btn-ghost" ${busy ? 'aria-disabled="true"' : ''}>${icon('clip')} ${t('chat.attach')}<input type="file" id="files" multiple accept="${ACCEPT}" hidden></label>
+              <div class="row"><label class="btn btn-sm btn-ghost" ${busy ? 'aria-disabled="true"' : ''}>${icon('clip')} ${t('chat.attach')}<input type="file" id="files" multiple accept="${ACCEPT}" hidden></label><button class="btn btn-sm btn-ghost" id="adata" title="Attach data from a custom API connection" ${busy ? 'disabled' : ''}>${icon('globe')} Data</button>
                 <span class="xs muted">${files.length}/${MAX_FILES} files</span></div>
               <div class="row">${st.room ? '<span class="xs faint">Claude + GPT</span>' : `<select class="select" id="model" aria-label="Model" style="height:30px;padding:2px 8px;font-size:12px;max-width:220px">
                 <option value="claude" ${pickState.model === 'claude' ? 'selected' : ''}>Claude</option><option value="gpt" ${pickState.model === 'gpt' ? 'selected' : ''}>GPT (OpenAI)</option>
@@ -60,6 +61,7 @@ export async function render(el, ctx) {
     el.querySelectorAll('[data-rmf]').forEach((b) => b.onclick = () => { files.splice(+b.dataset.rmf, 1); draw(); });
     el.querySelectorAll('[data-save]').forEach((b) => b.onclick = () => saveToApprovals(msgs.find((m) => m.id === b.dataset.save), b));
     $('#send', el).onclick = send;
+    $('#adata', el).onclick = async () => { const block = await attachData(); if (!block) return; const p = $('#prompt', el); p.value = (p.value.trim() ? p.value.trim() + '\n\n' : '') + block + '\n\n'; p.focus(); };
     $('#prompt', el).onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } };
   };
 

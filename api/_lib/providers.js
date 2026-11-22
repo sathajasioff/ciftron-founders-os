@@ -16,7 +16,7 @@ export const PROVIDERS = {
   youtube: { name: 'YouTube', secret: ['api_key'], plain: [] },
   google: { name: 'Google (Calendar and Meet)', secret: ['client_secret'], plain: ['client_id'] },
   stripe: { name: 'Stripe', secret: ['api_key'], plain: [] },
-  mcp: { name: 'Custom MCP server', secret: ['token'], plain: ['server_url'], phase: 6 },
+  tella: { name: 'Tella', secret: ['api_key'], plain: [] },
 };
 
 export const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5-5';
@@ -48,6 +48,7 @@ export async function testProvider(provider, s, config = {}) {
     case 'openrouter': return check('https://openrouter.ai/api/v1/key', { headers: { Authorization: `Bearer ${s.api_key}` } }, 'Key works');
     case 'elevenlabs': return check('https://api.elevenlabs.io/v1/user', { headers: { 'xi-api-key': s.api_key } }, 'Key works');
     case 'apify': return check('https://api.apify.com/v2/users/me', { headers: { Authorization: `Bearer ${s.api_token}` } }, 'Token works');
+    case 'tella': return check('https://api.tella.com/v1/videos?limit=1', { headers: { Authorization: `Bearer ${s.api_key}` } }, 'Key works');
     case 'stripe': return check('https://api.stripe.com/v1/balance', { headers: { Authorization: `Bearer ${s.api_key}` } }, 'Key works (read access to balance)');
     case 'google': {
       if (!config.client_id) return { ok: false, message: 'Add the Google client ID too.' };

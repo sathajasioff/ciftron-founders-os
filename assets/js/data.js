@@ -31,6 +31,14 @@ export const agents = [
   { id: 'em', name: 'Email Writer', role: 'Sequences and templates', initials: 'EW', enabled: false },
   { id: 'crm', name: 'CRM Assistant', role: 'Pipeline and automation planning', initials: 'CR', enabled: false },
   { id: 'ma', name: 'Marketing Analyst', role: 'Meta Ads and conversion analysis', initials: 'MA', enabled: false },
+  { id: 'am', name: 'Ads Manager', role: 'Meta campaigns, audiences and tests', initials: 'AM', enabled: true },
+  { id: 'vp', name: 'Video Producer', role: 'Video and AI video production', initials: 'VP', enabled: true },
+  { id: 'sc', name: 'Sales Coach', role: 'Call prep, scripts and objections', initials: 'SC', enabled: true },
+  { id: 'os', name: 'Offer Strategist', role: 'Offers, pricing and lead magnets', initials: 'OS', enabled: true },
+  { id: 'ow', name: 'Outreach Writer', role: 'Cold email, DMs and call scripts', initials: 'OW', enabled: true },
+  { id: 'cs2', name: 'Client Success', role: 'Onboarding, updates and reports', initials: 'CS', enabled: false },
+  { id: 'fl', name: 'Quebec French Localizer', role: 'Natural Quebec French versions', initials: 'FR', enabled: true },
+  { id: 'pm', name: 'Project Manager', role: 'Weekly plans and priorities', initials: 'PM', enabled: true },
 ];
 
 export const agentThreads = {

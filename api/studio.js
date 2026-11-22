@@ -15,6 +15,8 @@ import { revenueNow } from './_lib/context.js';
 import { runRoutine } from './_lib/routines.js';
 import { STYLES, themeFrom, PAGE_SYSTEM, pagePrompt, validateDesign, renderPage, sanitizePage, newToken } from './_lib/page.js';
 import { SLIDES_SYSTEM, slidesPrompt, validateSlides, joinDeck, buildPptx } from './_lib/slides.js';
+import { tellaList, tellaVideo, tellaText, safeGet } from './_lib/connect.js';
+import { decrypt } from './_lib/crypto.js';
 
 export const config = { maxDuration: 60 };
 const one = async (q) => { const { data, error } = await q; if (error) throw new HttpError(400, error.message); return data; };
@@ -319,9 +321,10 @@ No forced sales pitch.`;
     if (!v) throw new HttpError(400, 'Write the funnel copy first, then design the page');
     const offer = f.offer_id ? await one(db.from('offers').select('name, price, currency, cadence').eq('id', f.offer_id).maybeSingle()) : null;
     const style = STYLES.includes(body.style) ? body.style : 'brand';
-    const theme = themeFrom(await one(db.from('brand_board').select('palettes, fonts').maybeSingle()), style);
+    const board = await one(db.from('brand_board').select('palettes, fonts, design_rules').maybeSingle());
+    const theme = themeFrom(board, style);
     const language = body.language === 'fr-qc' ? 'Quebec French' : 'English';
-    const design = validateDesign(parseJson(await ask(PAGE_SYSTEM, pagePrompt({ out: v.output, offer, funnelName: f.name, instruction: String(body.instruction || '').slice(0, 800), language }), 1500)), v.output);
+    const design = validateDesign(parseJson(await ask(PAGE_SYSTEM, pagePrompt({ out: v.output, offer, funnelName: f.name, instruction: String(body.instruction || '').slice(0, 800), language, rules: board?.design_rules }), 1500)), v.output);
     let html;
     try { html = sanitizePage(renderPage({ out: v.output, design, theme, title: f.name, language }), { orderUrl: f.order_form_url }); } catch (e) { throw new HttpError(502, e.message); }
     const last = await one(db.from('funnel_pages').select('version_no').eq('funnel_id', f.id).order('version_no', { ascending: false }).limit(1).maybeSingle());
@@ -368,6 +371,57 @@ No forced sales pitch.`;
 
   // Theme only, so the browser can render slides and pages in brand colours.
   if (a === 'theme') return { theme: themeFrom(await one(db.from('brand_board').select('palettes, fonts').maybeSingle()), STYLES.includes(body.style) ? body.style : 'brand') };
+
+  // Tella: your recorded videos. Transcripts go to the Brain or become post drafts.
+  const tellaErr = (e) => { throw e.status ? new HttpError(e.status, e.message) : e; };
+  if (a === 'tella_list') {
+    const key = await getSecret(admin, user.id, 'tella', 'api_key');
+    const r = await tellaList(key, { cursor: body.cursor }).catch(tellaErr);
+    const urls = r.videos.map((v) => v.url).filter(Boolean);
+    const have = urls.length ? (await one(db.from('brain_sources').select('url').in('url', urls))).map((x) => x.url) : [];
+    return { videos: r.videos.map((v) => ({ ...v, in_brain: have.includes(v.url) })), next: r.next };
+  }
+  if (a === 'tella_import') {
+    const key = await getSecret(admin, user.id, 'tella', 'api_key');
+    const v = await tellaVideo(key, body.video_id).catch(tellaErr);
+    if (v.transcript_status !== 'ready' || v.transcript.trim().length < 30) throw new HttpError(400, v.transcript_status === 'processing' ? 'Tella is still making the transcript. Try again in a few minutes.' : 'This video has no transcript in Tella.');
+    const existing = await one(db.from('brain_sources').select('id').eq('url', v.url).maybeSingle());
+    if (existing) return { source_id: existing.id, existing: true };
+    const src = await one(db.from('brain_sources').insert({ owner_id: user.id, kind: 'text', name: `Tella: ${v.name}`.slice(0, 200), url: v.url, content: tellaText(v).slice(0, 400000), mime: 'text/plain', is_writing_sample: body.writing_sample !== false }).select('id').single());
+    return { source_id: src.id, chars: v.transcript.length };
+  }
+  if (a === 'tella_repurpose') {
+    const key = await getSecret(admin, user.id, 'tella', 'api_key');
+    const v = await tellaVideo(key, body.video_id).catch(tellaErr);
+    if (!v.transcript.trim()) throw new HttpError(400, 'This video has no transcript in Tella yet.');
+    const formats = (body.formats || []).filter((f) => typeof f === 'string').slice(0, 5);
+    if (!formats.length) throw new HttpError(400, 'Pick at least one format');
+    const lang = body.language === 'fr-qc' ? 'Quebec French' : body.language === 'both' ? 'both English and Quebec French (one draft each)' : 'English';
+    const agent = AGENT_SEEDS.find((x) => x.slug === 'content-strategist');
+    const sys = systemPrompt({ dna: await dna(), agent }) + '\n\n' + signalsBlock(await signals());
+    const prompt = `Repurpose this video the owner recorded into: ${formats.join(', ')}. One draft per format. Language: ${lang}.
+Use the owner's own words and examples from the transcript; quote them where it helps. Do not add facts that are not in it.
+Video: "${v.name}"${v.chapters.length ? `\nChapters: ${v.chapters.map((c) => c.title).join('; ')}` : ''}
+
+Transcript:
+${v.transcript.slice(0, 30000)}`;
+    const { drafts } = extractDrafts(await ask(sys, prompt, 4000));
+    for (const d of drafts) await approval({ type: d.type, title: d.title, payload: { body: d.body, tella_video: { id: v.id, name: v.name, url: v.url } }, tags: [...new Set([...d.tags, 'tella'])], language: d.language, source_agent: 'Content Strategist', target_module: 'content' });
+    return { drafts: drafts.length };
+  }
+
+  // Custom connections: read one saved endpoint (GET only) so the owner can preview it and attach it to a message.
+  if (a === 'custom_fetch') {
+    const conn = await one(db.from('custom_connections').select('*').eq('id', String(body.id || '')).maybeSingle());
+    if (!conn) throw new HttpError(404, 'Connection not found');
+    const path = String(body.path || conn.endpoints[0]?.path || '/');
+    const { data: k } = await admin.from('provider_keys').select('ciphertext, iv, auth_tag').eq('owner_id', user.id).eq('provider', `custom:${conn.id}`).eq('field', 'api_key').maybeSingle();
+    if (conn.auth !== 'none' && !k) throw new HttpError(400, `Add the key for ${conn.name} in Connections first`);
+    try {
+      const r = await safeGet(conn, path, k ? decrypt(k) : null);
+      return { name: conn.name, path, status: r.status, ok: r.ok, type: r.type, text: r.text, truncated: r.truncated };
+    } catch (e) { throw new HttpError(400, e.message); }
+  }
 
   if (a === 'learning_refresh') {
     const items = await one(db.from('approvals').select('type, status, tags, language, authored_by, trashed_at').order('created_at', { ascending: false }).limit(300));

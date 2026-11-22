@@ -5,8 +5,9 @@ import { getLang } from './i18n.js';
 
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-export function createVoice({ onState, onLevel, onHeard, onError }) {
-  let rec = null, audio = null, ctx = null, analyser = null, raf = 0, muted = false, elevenOk = true;
+// onSpoken fires when an answer has finished playing (or was skipped while muted), so a conversation can listen again.
+export function createVoice({ onState, onLevel, onHeard, onError, onSpoken }) {
+  let rec = null, audio = null, ctx = null, analyser = null, raf = 0, muted = false, elevenOk = true, current = null;
   const set = (s) => onState && onState(s);
 
   function listen() {
@@ -18,14 +19,14 @@ export function createVoice({ onState, onLevel, onHeard, onError }) {
     rec.maxAlternatives = 1;
     let heard = false;
     rec.onresult = (e) => { heard = true; const text = e.results[0][0].transcript.trim(); set('thinking'); onHeard && onHeard(text); };
-    rec.onerror = (e) => { if (e.error !== 'aborted') onError && onError(e.error === 'not-allowed' ? 'Microphone access is blocked for this site.' : e.error === 'no-speech' ? 'I did not hear anything.' : 'Listening stopped: ' + e.error); set('online'); };
+    rec.onerror = (e) => { if (e.error !== 'aborted') onError && onError(e.error === 'not-allowed' ? 'Microphone access is blocked for this site.' : e.error === 'no-speech' ? 'I did not hear anything.' : 'Listening stopped: ' + e.error, e.error); set('online'); };
     rec.onend = () => { if (!heard) set('online'); rec = null; };
     rec.start();
     set('listening');
   }
 
   async function speak(text) {
-    if (muted || !text) { set('online'); return; }
+    if (muted || !text) { set('online'); onSpoken && onSpoken(); return; }
     set('speaking');
     if (live.on && elevenOk) {
       try {
@@ -44,7 +45,8 @@ export function createVoice({ onState, onLevel, onHeard, onError }) {
       u.lang = getLang() === 'fr' ? 'fr-CA' : 'en-US';
       u.rate = 1.03;
       let k = 0; const fake = () => { k += 0.25; onLevel && onLevel(0.35 + Math.abs(Math.sin(k)) * 0.5); raf = requestAnimationFrame(fake); };
-      u.onend = () => done(); u.onerror = () => done();
+      u.onend = () => { if (u === current) done(); }; u.onerror = () => { if (u === current) done(); };
+      current = u;
       fake();
       speechSynthesis.speak(u);
     } else done();
@@ -62,11 +64,12 @@ export function createVoice({ onState, onLevel, onHeard, onError }) {
     } catch { /* level meter is optional */ }
   }
 
-  function done() { cancelAnimationFrame(raf); onLevel && onLevel(0); audio = null; set('online'); }
+  function done() { cancelAnimationFrame(raf); onLevel && onLevel(0); audio = null; set('online'); onSpoken && onSpoken(); }
 
   function stop() {
     if (rec) { try { rec.abort(); } catch {} rec = null; }
     if (audio) { audio.pause(); audio = null; }
+    current = null;
     if ('speechSynthesis' in window) speechSynthesis.cancel();
     cancelAnimationFrame(raf); onLevel && onLevel(0);
     set('online');

@@ -27,7 +27,10 @@ def _api(route):
     out = {'ok': True}
     if path == 'chat' and body.get('mode') == 'jarvis': out = {'reply': 'Two drafts are waiting and one new lead came in today.'}
     elif path == 'config': out = {'supabaseUrl': 'https://fake.supabase.co', 'supabaseAnonKey': 'anon', 'phase': 2}
-    elif path == 'keys' and req.method == 'GET': out = {'providers': providers}
+    elif path == 'voice': return route.fulfill(status=400, content_type='application/json', body=json.dumps({'error': 'Add your ElevenLabs key in Connections first'}))
+    elif path == 'keys' and req.method == 'GET': out = {'providers': providers, 'custom': [{'id': 'cc1', 'last4': '3456'}]}
+    elif path == 'keys' and body.get('action') == 'custom_save': out = {'id': 'cc2'}
+    elif path == 'keys' and body.get('action') == 'custom_test': out = {'ok': True, 'message': 'Works: GET /scheduled_events returned 200'}
     elif path == 'keys' and body.get('action') == 'test': out = {'ok': True, 'status': 'ok', 'message': 'Key works'}
     elif path == 'brain' and body.get('action') == 'compile': out = {'brand_dna': {'version_no': 2}}
     elif path == 'brain' and body.get('action') == 'ingest': out = {'ok': True, 'chunks': 7}
@@ -50,6 +53,9 @@ def _api(route):
                            'summary': {'currencies': ['USD', 'CAD'], 'mrr': {'USD': 497, 'CAD': 1500}, 'this_month': {'USD': 497, 'CAD': 1500}, 'last_month': {'USD': 994, 'CAD': 1500},
                                        'months': [{'month': m, 'USD': {'stripe': v, 'manual': 0, 'total': v}, 'CAD': {'stripe': 0, 'manual': 1500, 'total': 1500}} for m, v in [('2026-06', 0), ('2026-07', 497), ('2026-08', 497), ('2026-09', 994), ('2026-10', 994), ('2026-11', 497)]]}}, 'research_fetch': {'posts': 12, 'median': 1800},
                'graphic': {'b64': 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP4z8DwHwyBNAOU8R8AjjgL9YdRIygAAAAASUVORK5CYII=', 'media_type': 'image/png', 'prompt': 'p', 'model': 'm', 'cost': 0.04}, 'rewrite_email': {'subject': 'New subject', 'preview': '', 'body': 'Shorter body'},
+               'tella_list': {'videos': [{'id': 'vid_1', 'name': 'Why leads go cold', 'description': 'Loom-style walkthrough', 'views': 12, 'created_at': '2026-11-20T10:00:00Z', 'url': 'https://www.tella.tv/video/vid_1/view', 'in_brain': False}], 'next': None},
+               'tella_import': {'source_id': 'src_t1', 'chars': 900}, 'tella_repurpose': {'drafts': 3},
+               'custom_fetch': {'name': 'Calendly', 'path': '/scheduled_events', 'status': 200, 'ok': True, 'type': 'application/json', 'text': '{\n "collection": [{"name": "Discovery with Marc"}]\n}', 'truncated': False},
                'page_build': {'page_id': 'pg2', 'version_no': 2, 'preview_path': '/p/tok_x'}, 'slides_build': {'deck_id': 'dk2', 'slides': 6}, 'slides_pptx': {'b64': 'UEsDBAo=', 'filename': 'Lead-Response-Bootcamp.pptx'},
                'theme': {'theme': {'bg': '#0E1A2B', 'surface': '#FFFFFF14', 'text': '#F5F5F3', 'muted': '#C9C9C3', 'accent': '#C8F36B', 'accentText': '#111111', 'highlight': '#C8F36B', 'fonts': {'heading': 'Space Grotesk', 'body': 'DM Sans'}}}}.get(a, {'ok': True})
     elif path == 'account' and body.get('action') == 'mcp_token_create': out = {'token': 'cfos_' + 'T' * 43, 'id': 'mt2', 'name': body['name'], 'scope': body['scope'], 'token_prefix': 'cfos_TTTTTTT'}
@@ -75,6 +81,9 @@ srv = subprocess.Popen([sys.executable, '-I', os.path.join(ROOT, 'tests', 'serve
 time.sleep(1)
 errors = []
 
+def node_json(code):
+    return json.loads(subprocess.run(['node', '-e', code], cwd=ROOT, capture_output=True, text=True, check=True).stdout)
+
 def wait_js(pg, expr, timeout=8):
     # Polls with page.evaluate (runs over the DevTools protocol, so the app's CSP still forbids eval in the page).
     end = time.time() + timeout
@@ -91,9 +100,16 @@ try:
         ctx = b.new_context(viewport={'width': 1440, 'height': 900})
         ctx.route('https://esm.sh/**', lambda r: r.fulfill(status=200, body=FAKE, headers={'content-type': 'application/javascript', 'access-control-allow-origin': '*'}))
         ctx.route('**/api/**', api)
+        ctx.add_init_script('''(() => {
+          window.__SAY = []; window.__SPOKEN = []; window.__LISTENS = 0;
+          class FakeSR { start() { window.__LISTENS++; setTimeout(() => { const t = window.__SAY.shift(); if (t == null) { this.onerror && this.onerror({ error: 'no-speech' }); this.onend && this.onend(); return; }
+            this.onresult && this.onresult({ results: [[{ transcript: t }]] }); this.onend && this.onend(); }, 120); } abort() {} stop() {} }
+          window.SpeechRecognition = FakeSR; window.webkitSpeechRecognition = FakeSR;
+          Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: { speak(u) { window.__SPOKEN.push(u.text); setTimeout(() => u.onend && u.onend(), 80); }, cancel() {} } });
+        })()''')
         pg = ctx.new_page()
         pg.on('pageerror', lambda e: errors.append(f'pageerror: {e}'))
-        pg.on('console', lambda m: m.type == 'error' and 'fonts.g' not in m.text and errors.append('console: ' + m.text))
+        pg.on('console', lambda m: m.type == 'error' and 'fonts.g' not in m.text and '/api/voice' not in (m.location or {}).get('url', '') and errors.append('console: ' + m.text))
         base = 'http://localhost:8767/'
 
         # 1. Signed out: login screen only, owner-only magic link
@@ -489,9 +505,61 @@ try:
         pg.goto(base + '#approvals'); pg.wait_for_selector('text=Slides: Lead Response Bootcamp'); pg.click('[data-act=approve][data-id=apdk]'); pg.wait_for_timeout(500)
         dk = pg.evaluate("window.__FAKE_DB__.program_decks.find(d => d.id === 'dk1')")
         assert dk['status'] == 'approved' and dk['version'] == 4, dk
+        # 38. Phase 11: 17 agents, new agent routines
+        seeds = node_json("import('./api/_lib/chat.js').then(m => console.log(JSON.stringify(m.AGENT_SEEDS.slice(9).map(({ slug, name, role, sort }) => ({ slug, name, role, sort })))))")
+        pg.evaluate('''(seeds) => { for (const a of seeds) window.__FAKE_DB__.agents.push({ id: 'ag_' + a.slug, owner_id: '11111111-1111-1111-1111-111111111111', instructions: 'x', enabled: true, pinned: false, version: 1, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...a }); }''', seeds)
+        pg.goto(base + '#home'); pg.goto(base + '#team'); pg.wait_for_selector('text=Project Manager')
+        for a in seeds: assert pg.locator(f'text={a["name"]}').count() >= 1, a['name']
+        pg.locator('text=Sales Coach').first.click(); pg.wait_for_selector('#amsg:not([disabled])')
+        pg.locator('text=Project Manager').first.click(); pg.wait_for_selector('text=Reads your live business numbers')
+        shot(pg, 'team17')
+
+        # 39. Phase 11: hands-free Jarvis conversation: answers, listens again, ends on "goodbye"
+        pg.evaluate("window.__SAY = ['How is my pipeline?', 'goodbye']; window.__SPOKEN = []; window.__LISTENS = 0")
+        pg.goto(base + '#home'); pg.wait_for_selector('#jv-conv'); pg.click('#jv-conv')
+        wait_js(pg, "window.__SPOKEN.length >= 2", 10)
+        assert pg.evaluate("window.__SPOKEN") == ['Two drafts are waiting and one new lead came in today.', 'Okay.'], pg.evaluate("window.__SPOKEN")
+        assert pg.evaluate("window.__LISTENS") == 2, 'listened again after answering'
+        assert [c for c in calls if c[0] == 'chat'][-1][2]['message'] == 'How is my pipeline?'
+        wait_js(pg, "document.querySelector('#jv-conv').getAttribute('aria-pressed') === 'false'", 5)
+        assert pg.locator('.jv-answer:not(.hidden)').count() == 0, 'spoken answers are not shown as a transcript'
+        # Two silences end the conversation.
+        pg.evaluate("window.__SAY = []; window.__LISTENS = 0"); pg.click('#jv-conv'); pg.wait_for_selector('text=Conversation ended: I did not hear anything.')
+        assert pg.evaluate("window.__LISTENS") == 2
+
+        # 40. Phase 11: Tella in Content
+        pg.goto(base + '#content'); pg.wait_for_selector('[data-tab=tella]'); pg.click('[data-tab=tella]'); pg.wait_for_selector('text=Why leads go cold')
+        pg.click('[data-tlb="0"]'); pg.wait_for_selector('text=In Brain')
+        assert any(c[0] == 'studio' and c[2] == {'action': 'tella_import', 'video_id': 'vid_1'} for c in calls)
+        assert any(c[0] == 'brain' and c[2] == {'action': 'ingest', 'source_id': 'src_t1'} for c in calls)
+        pg.click('[data-tlp="0"]'); pg.uncheck('[data-tf="Carousel"]'); pg.check('[data-tf="Email"]'); pg.select_option('#tll', 'fr-qc'); pg.click('.modal [data-ok]'); pg.wait_for_selector('text=3 drafts sent to Approvals')
+        tr = [c for c in calls if c[0] == 'studio'][-1][2]
+        assert tr == {'action': 'tella_repurpose', 'video_id': 'vid_1', 'formats': ['Short video', 'Written post', 'Email'], 'language': 'fr-qc'}, tr
+        shot(pg, 'tella')
+
+        # 41. Phase 11: custom API connection in Settings, then attach its data in AI Chat
+        pg.evaluate('''() => window.__FAKE_DB__.custom_connections.push({ id: 'cc1', owner_id: '11111111-1111-1111-1111-111111111111', name: 'Calendly', base_url: 'https://api.calendly.com', auth: 'bearer', auth_name: null, endpoints: [{ name: 'Upcoming events', path: '/scheduled_events' }], last_status: 'ok', last_message: 'Works', version: 1, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })''')
+        pg.goto(base + '#connections'); pg.wait_for_selector('text=Custom API connections'); pg.wait_for_selector('text=key ending 3456')
+        pg.click('#ccadd'); pg.fill('#ccn', 'Stripe reports'); pg.fill('#ccu', 'https://api.example-reports.com'); pg.select_option('#cca', 'header'); pg.fill('#ccan', 'X-API-Key'); pg.fill('#cck', 'rk_test_9999')
+        pg.fill('[data-epn]', 'Summary'); pg.fill('[data-epp]', '/v1/summary'); pg.click('.modal [data-ok]'); pg.wait_for_selector('text=Saved. Click Test to check it.')
+        cs = [c for c in calls if c[0] == 'keys' and c[2].get('action') == 'custom_save'][-1][2]
+        assert cs['connection'] == {'name': 'Stripe reports', 'base_url': 'https://api.example-reports.com', 'auth': 'header', 'auth_name': 'X-API-Key', 'endpoints': [{'name': 'Summary', 'path': '/v1/summary'}]} and cs['key'] == 'rk_test_9999', cs
+        pg.click('[data-cct=cc1]'); pg.wait_for_selector('text=Works: GET /scheduled_events returned 200')
+        shot(pg, 'custom-connections')
+        pg.goto(base + '#chat'); pg.wait_for_selector('#adata'); pg.fill('#prompt', 'Who am I meeting this week?'); pg.click('#adata'); pg.wait_for_selector('#adgo')
+        assert pg.input_value('#adp') == '/scheduled_events'
+        pg.click('#adgo'); pg.wait_for_selector('#adout >> text=Discovery with Marc'); pg.click('.modal [data-ok]')
+        val = pg.input_value('#prompt')
+        assert val.startswith('Who am I meeting this week?') and 'Data from Calendly (GET /scheduled_events)' in val and 'Discovery with Marc' in val, val
+        assert [c for c in calls if c[0] == 'studio'][-1][2] == {'action': 'custom_fetch', 'id': 'cc1', 'path': '/scheduled_events'}
+
+        # 42. Phase 11: design rules on the brand board
+        pg.goto(base + '#graphics'); pg.wait_for_selector('[data-tab=board]'); pg.click('[data-tab=board]'); pg.wait_for_selector('#drules')
+        pg.fill('#drules', 'Lots of white space. No gradients.'); pg.click('#bsave'); pg.wait_for_selector('text=Brand board saved')
+        assert pg.evaluate("window.__FAKE_DB__.brand_board[0].design_rules") == 'Lots of white space. No gradients.'
         b.close()
 finally:
     srv.terminate()
 if errors:
     print('\n'.join(errors)); sys.exit(1)
-print('OK: live mode e2e (login, Brain, keys, Approvals, Chat, Team, Pipeline, HighLevel writes, Jarvis, Content, Emails, Funnels, Graphics, Vault, Goals, Programs, Routines, MCP, Error log, CSP, Team, My feed, Funnel, Playbook, Models, Calls, Revenue, Google, Funnel pages, Slides)')
+print('OK: live mode e2e (login, Brain, keys, Approvals, Chat, Team, Pipeline, HighLevel writes, Jarvis, Content, Emails, Funnels, Graphics, Vault, Goals, Programs, Routines, MCP, Error log, CSP, Team, My feed, Funnel, Playbook, Models, Calls, Revenue, Google, Funnel pages, Slides, 17 agents, Conversation, Tella, Custom connections, Design rules)')

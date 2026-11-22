@@ -62,7 +62,7 @@ export function toast(msg, opts = {}) {
   setTimeout(() => el.remove(), opts.ms || 4200);
 }
 
-export function modal({ title, sub = '', body = '', foot = '', wide = false, onMount }) {
+export function modal({ title, sub = '', body = '', foot = '', wide = false, onMount, onClose }) {
   const root = $('#modal-root');
   const ov = document.createElement('div');
   ov.className = 'overlay';
@@ -70,7 +70,7 @@ export function modal({ title, sub = '', body = '', foot = '', wide = false, onM
     <div class="modal-head"><div><h2>${esc(title)}</h2>${sub ? `<p class="muted small" style="margin-top:4px">${sub}</p>` : ''}</div>
     <button class="btn btn-ghost btn-icon" data-close aria-label="${t('c.close')}">${icon('x')}</button></div>
     <div class="modal-body">${body}</div>${foot ? `<div class="modal-foot">${foot}</div>` : ''}</div>`;
-  const close = () => { ov.remove(); document.removeEventListener('keydown', onKey); };
+  const close = () => { if (!ov.isConnected) return; ov.remove(); document.removeEventListener('keydown', onKey); onClose && onClose(); };
   const onKey = (e) => { if (e.key === 'Escape') close(); };
   ov.addEventListener('click', (e) => { if (e.target === ov || e.target.closest('[data-close]')) close(); });
   document.addEventListener('keydown', onKey);

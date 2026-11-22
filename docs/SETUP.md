@@ -422,3 +422,40 @@ The OS now has 12 server functions, the maximum on Vercel's free Hobby plan. Fut
 3. **Open** a deck to page through it and edit titles, bullets and speaker notes. Saving keeps your edits; the AI never overwrites them.
 4. **PowerPoint** downloads a .pptx (opens in PowerPoint, Keynote and Google Slides, with speaker notes). **PDF** opens the print window: choose **Save as PDF**.
 
+# Phase 11 update (team and voice)
+
+1. **Required:** in Supabase SQL Editor, run `supabase/migrations/20261122000011_connections_design.sql`.
+2. Reload the OS once. The 8 new agents appear in **AI Team** (your existing agents and their instructions are not changed).
+
+## The 17 agents
+
+New: **Ads Manager** (campaign structure and creative tests), **Video Producer** (shot lists and AI video plans), **Sales Coach** (call prep, scripts, objections), **Offer Strategist** (offers, pricing, lead magnets), **Outreach Writer** (cold email, DMs, call openers), **Client Success** (onboarding and client updates), **Quebec French Localizer** (natural Quebec French versions), **Project Manager** (weekly plan from your goals and pipeline).
+Ads Manager, Offer Strategist, Client Success and Project Manager read your live numbers. Scripts, outreach, offers and plans go to Approvals under **Library**: approving keeps them there as approved references.
+Ask the Chief of Staff for anything; it routes to the right one. Ready-made routines: Project Manager "Monday plan", Ads Manager "Weekly creative test", Outreach Writer "Fresh outreach angles", Client Success "Client update drafts".
+
+## Hands-free Jarvis
+
+On the Jarvis home, click **Conversation**. Ask a question, Jarvis answers out loud, then listens again. Say **stop** or **goodbye** (or **arrête**, **merci Jarvis**) to end, or click **End conversation**. It also ends after two silences, on an error, or when you leave the tab. The microphone is only on while the conversation runs. Works in Chrome, Edge and Safari.
+
+## Tella
+
+1. In Tella: **Settings → API keys** (or **Integrations → API**) and create a key.
+2. In the OS: **Connections and Settings → Tella → Connect**, paste the key, **Save and test**.
+3. **Content → Tella** lists your recordings:
+   - **Add to Brain** saves the transcript (with chapters) as a sample of how you speak; facts from it appear in Brain to review.
+   - **Turn into posts** drafts posts, emails or hooks from what you said. Drafts go to Approvals.
+
+## Custom API connections
+
+For any app with an API key (for example Calendly, Notion, a reporting tool). Read-only.
+1. **Connections and Settings → Custom API connections → Add connection.**
+2. Name, the API address (https only), how the key is sent (Bearer, a header, or in the address), the key, and the endpoints you want to read (a name and a path, for example "Upcoming events" and `/scheduled_events`).
+3. **Test** reads the first endpoint.
+4. In **AI Chat** (Data button) or **AI Team** (globe button): pick the connection and endpoint, **Preview**, then **Attach to message**. Only what you previewed is added to your message.
+
+Safety: only GET requests; no private network addresses; redirects are refused; the key is encrypted on the server, never sent to the browser, and removed from any response that echoes it. Team members can use connections but only you can add, change or remove them. Use a read-only key when the app offers one.
+
+## Design rules
+
+**Graphics → Brand board → Design rules**: write how your designs should look (for example "lots of white space, one accent color, my photos not stock, no gradients"). Every graphic and every designed funnel page follows them.
+

@@ -8,6 +8,7 @@ const STAGES = ['Idea', 'Scripting', 'Filming', 'Editing', 'Scheduled', 'Uploade
 const FORMATS = ['Short video', 'Long video', 'Carousel', 'Written post', 'Email', 'Meta Ad copy', 'Content plan', 'Idea'];
 const TASKS = ['script', 'film', 'edit', 'thumbnail', 'upload'];
 const ui = { tab: 'board', month: null, feedPlatform: 'all' };
+const tellaState = { videos: null, next: null, error: null };
 const PLATFORMS = ['Instagram', 'YouTube', 'Facebook', 'LinkedIn'];
 const STAGE_NAME = { tofu: 'Top of funnel', mofu: 'Middle of funnel', bofu: 'Bottom of funnel' };
 const STAGE_HINT = { tofu: 'Reach and interest', mofu: 'Educate and build trust', bofu: 'Ask for the call or sale' };
@@ -38,11 +39,11 @@ export async function render(el, ctx) {
   const draw = () => {
     el.innerHTML = `
       ${head(t('content.title'), t('content.sub'), `<button class="btn btn-primary" id="new-card">${icon('plus')} ${t('c.new')}</button>`)}
-      ${tabsHtml([['board', t('content.board')], ['calendar', t('content.calendar')], ['feed', 'My feed'], ['research', t('content.research')], ['funnel', 'Funnel'], ['learning', t('content.learning')]], ui.tab)}
+      ${tabsHtml([['board', t('content.board')], ['calendar', t('content.calendar')], ['feed', 'My feed'], ['research', t('content.research')], ['funnel', 'Funnel'], ['tella', 'Tella'], ['learning', t('content.learning')]], ui.tab)}
       <div id="pane"></div>`;
     el.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { ui.tab = b.dataset.tab; draw(); });
     $('#new-card', el).onclick = () => editCard(null);
-    ({ board, calendar, feed, research, funnel, learning })[ui.tab]($('#pane', el));
+    ({ board, calendar, feed, research, funnel, tella, learning })[ui.tab]($('#pane', el));
   };
 
   const cardHtml = (c) => {
@@ -178,6 +179,46 @@ export async function render(el, ctx) {
         toast(`${r.drafts} ideas sent to Approvals`); ctx.refreshNav(); refresh(); }
       catch (e) { toast(e.message, { ms: 7000 }); b.disabled = false; b.textContent = 'Plan ideas'; }
     };
+  }
+
+  // Tella: your recordings. Transcripts go to the Brain (as a sample of how you speak) or become post drafts.
+  async function tella(pane) {
+    const show = () => {
+      const v = tellaState.videos;
+      pane.innerHTML = tellaState.error ? `<div class="empty card soft"><p>${esc(tellaState.error)}</p>${/Connections/.test(tellaState.error) ? '<a class="btn btn-sm" href="#connections">Open Connections</a>' : ''}</div>`
+        : !v ? '<div class="empty">Loading your Tella videos...</div>'
+        : `<div class="row between wrap" style="margin-bottom:10px"><p class="small muted">Your Tella recordings. <b>Add to Brain</b> saves the transcript as a sample of how you speak. <b>Turn into posts</b> drafts posts from what you said; drafts go to Approvals.</p><button class="btn btn-sm" id="tlr">${icon('refresh')} Refresh</button></div>
+          <div class="list">${v.map((x, i) => `<div class="list-item wrap"><div class="grow"><b class="small">${esc(x.name)}</b><div class="xs muted">${x.created_at ? fmt(x.created_at.slice(0, 10)) : ''}${x.views != null ? ` · ${x.views} views` : ''}${x.description ? ' · ' + esc(x.description.slice(0, 90)) : ''}</div></div>
+            ${x.in_brain ? '<span class="chip ok">In Brain</span>' : `<button class="btn btn-sm" data-tlb="${i}">${icon('brain')} Add to Brain</button>`}
+            <button class="btn btn-sm btn-primary" data-tlp="${i}">${icon('sparkle')} Turn into posts</button>${x.url ? `<a class="btn btn-sm btn-ghost" href="${esc(x.url)}" target="_blank" rel="noopener">${icon('ext')}</a>` : ''}</div>`).join('') || '<div class="empty small">No videos in Tella yet</div>'}</div>
+          ${tellaState.next ? '<button class="btn btn-sm btn-ghost" id="tlm" style="margin-top:8px">Load more</button>' : ''}`;
+      const r = $('#tlr', pane); if (r) r.onclick = () => { tellaState.videos = null; tellaState.error = null; tella(pane); };
+      const m = $('#tlm', pane); if (m) m.onclick = () => fetchPage(tellaState.next);
+      pane.querySelectorAll('[data-tlb]').forEach((b) => b.onclick = async () => { const x = tellaState.videos[+b.dataset.tlb]; b.disabled = true; b.textContent = 'Adding...';
+        try { const r2 = await api('studio', { body: { action: 'tella_import', video_id: x.id } }); if (!r2.existing) { await api('brain', { body: { action: 'ingest', source_id: r2.source_id } }); api('brain', { body: { action: 'propose', source_id: r2.source_id } }).catch(() => {}); }
+          x.in_brain = true; toast('Added to the Brain. Facts from it will appear in Brain to review.'); show(); }
+        catch (e) { toast(e.message, { ms: 7000 }); b.disabled = false; b.textContent = 'Add to Brain'; } });
+      pane.querySelectorAll('[data-tlp]').forEach((b) => b.onclick = () => repurpose(tellaState.videos[+b.dataset.tlp]));
+    };
+    const fetchPage = async (cursor) => {
+      try { const r = await api('studio', { body: { action: 'tella_list', ...(cursor ? { cursor } : {}) } }); tellaState.videos = [...(cursor ? tellaState.videos || [] : []), ...r.videos]; tellaState.next = r.next; tellaState.error = null; }
+      catch (e) { tellaState.error = e.message; }
+      if (ui.tab === 'tella' && pane.isConnected) show();
+    };
+    show();
+    if (!tellaState.videos && !tellaState.error) await fetchPage();
+  }
+
+  function repurpose(v) {
+    modal({ title: 'Turn a Tella video into posts', sub: esc(v.name), body: `<p class="small muted">Drafts use your own words and examples from the transcript. Nothing is added that you did not say. Drafts go to Approvals.</p>
+      <div class="field" style="margin-top:10px"><label>Formats</label><div class="row wrap">${['Short video', 'Carousel', 'Written post', 'Email', 'Hooks'].map((f, i) => `<label class="row small"><input type="checkbox" ${i < 3 ? 'checked' : ''} data-tf="${f}"> ${f}</label>`).join('')}</div></div>
+      <div class="field" style="margin-top:12px"><label>${t('c.language')}</label><select class="select" id="tll"><option value="en">English</option><option value="fr-qc">Quebec French</option><option value="both">Both</option></select></div>`,
+      foot: `<button class="btn" data-close>${t('c.cancel')}</button><button class="btn btn-primary" data-ok>${icon('sparkle')} Create drafts</button>`,
+      onMount: (ov, close) => { ov.querySelector('[data-ok]').onclick = async (ev) => { const b = ev.currentTarget;
+        const formats = [...ov.querySelectorAll('[data-tf]:checked')].map((x) => x.dataset.tf); if (!formats.length) return toast('Pick at least one format');
+        b.disabled = true; b.textContent = 'Writing...';
+        try { const r = await api('studio', { body: { action: 'tella_repurpose', video_id: v.id, formats, language: ov.querySelector('#tll').value } }); close(); ctx.refreshNav(); toast(`${r.drafts} draft${r.drafts === 1 ? '' : 's'} sent to Approvals`); }
+        catch (e) { toast(e.message, { ms: 7000 }); b.disabled = false; b.textContent = 'Create drafts'; } }; } });
   }
 
   function learning(pane) {

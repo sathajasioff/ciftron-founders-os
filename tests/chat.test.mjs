@@ -41,7 +41,9 @@ test('systemPrompt includes Brand DNA, Brain hits, house rules and agent role', 
 });
 
 test('agent seeds: Chief of Staff pinned, all nine agents built with instructions', () => {
-  assert.equal(ACTIVE_AGENTS.length, 9);
+  assert.equal(ACTIVE_AGENTS.length, 17);
+  assert.equal(new Set(AGENT_SEEDS.map((a) => a.slug)).size, 17, 'unique slugs');
+  assert.deepEqual(AGENT_SEEDS.map((a) => a.sort), [...Array(17).keys()], 'ordered');
   assert.ok(AGENT_SEEDS[0].pinned && AGENT_SEEDS[0].enabled);
   assert.ok(AGENT_SEEDS.every((a) => a.instructions && a.instructions.length > 80), 'every agent has real instructions');
   for (const a of AGENT_SEEDS.slice(1)) assert.ok(AGENT_SEEDS[0].instructions.includes(a.slug), `Chief of Staff can route to ${a.slug}`);

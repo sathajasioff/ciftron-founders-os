@@ -1,9 +1,12 @@
 // AI Team backed by Supabase and /api/chat: Chief of Staff routes, Content Strategist drafts to Approvals.
 import { t } from '../i18n.js';
 import { head, icon, esc, toast, md, modal, toggleHtml, $ } from '../ui.js';
+import { attachData } from '../custom-ui.js';
 import { live, api, q, versionedUpdate } from '../live.js';
 
-const ACTIVE = ['chief-of-staff', 'content-strategist', 'researcher', 'copywriter', 'designer', 'funnel-builder', 'email-writer', 'crm-assistant', 'marketing-analyst'];
+const ACTIVE = ['chief-of-staff', 'content-strategist', 'researcher', 'copywriter', 'designer', 'funnel-builder', 'email-writer', 'crm-assistant', 'marketing-analyst',
+  'ads-manager', 'video-producer', 'sales-coach', 'offer-strategist', 'outreach-writer', 'client-success', 'french-localizer', 'project-manager'];
+const LIVE_DATA = ['crm-assistant', 'marketing-analyst', 'ads-manager', 'offer-strategist', 'client-success', 'project-manager'];
 const ini = (n) => n.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 const st = { slug: 'content-strategist' };
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -13,6 +16,10 @@ const PRESETS = {
   'content-strategist': ['weekly', 'Next week of content', 'Plan next week of content: five short video ideas and two carousels, built on what is working for me. One draft per idea.'],
   'marketing-analyst': ['weekly', 'Weekly ads and pipeline review', 'Review last week of Meta Ads and the HighLevel pipeline. Note changes in cost per lead and lead flow, and suggest one test for next week. Brief only.'],
   'email-writer': ['monthly', 'Monthly newsletter', 'Draft this month newsletter to my list from my recent content and approved Brain facts. One email.'],
+  'project-manager': ['weekly', 'Monday plan', 'Plan my week: the three priorities that move my goals, tasks by day with time estimates, and what to delegate or drop.'],
+  'ads-manager': ['weekly', 'Weekly creative test', 'From last week of Meta numbers, propose one creative test for this week with the hypothesis, the variants and the kill and scale rules.'],
+  'outreach-writer': ['weekly', 'Fresh outreach angles', 'Write three new cold email openers and two DM openers for my main niche, each with a different angle. Personalization in [BRACKETS].'],
+  'client-success': ['monthly', 'Client update drafts', 'Draft a short monthly update template for my retainer clients with sections for wins, numbers, next month and one ask. Mark numbers as [NUMBER].'],
   'crm-assistant': ['weekly', 'Pipeline follow-up list', 'List the stages where leads are stuck and draft one follow-up message per stage for me to review. Do not name contacts.'],
 };
 const cadenceText = (r) => r.cadence === 'daily' ? 'Every day' : r.cadence === 'weekly' ? `Every ${DAYS[r.weekday ?? 1]}` : `Monthly, day ${r.day_of_month ?? 1}`;
@@ -40,7 +47,7 @@ export async function render(el, ctx) {
           <div class="avatar ai">${ini(x.name)}</div><div class="grow"><div class="small" style="font-weight:600">${esc(x.name)} ${x.pinned ? '<span class="chip accent" style="margin-left:4px">Pinned</span>' : ''}</div>
           <div class="xs muted">${ACTIVE.includes(x.slug) ? esc(x.role || '') : 'Not available'}</div></div>${x.enabled ? '<span class="dot on"></span>' : ''}</div>`).join('')}</div>
         <div class="mcol convo" style="display:flex;flex-direction:column">
-          <div class="row between" style="padding:12px 16px;border-bottom:1px solid var(--border)"><div><b>${esc(a.name)}</b><div class="xs muted">${usable ? (a.slug === 'chief-of-staff' ? 'Routes work to the right specialist' : ['crm-assistant', 'marketing-analyst'].includes(a.slug) ? 'Reads live HighLevel and Meta numbers' : 'Drafts go to Approvals') : 'Not available'}</div></div>
+          <div class="row between" style="padding:12px 16px;border-bottom:1px solid var(--border)"><div><b>${esc(a.name)}</b><div class="xs muted">${usable ? (a.slug === 'chief-of-staff' ? 'Routes work to the right specialist' : LIVE_DATA.includes(a.slug) ? 'Reads your live business numbers' : 'Drafts go to Approvals') : 'Not available'}</div></div>
             ${thread ? `<button class="btn btn-sm btn-ghost" id="newt">${icon('plus')} New thread</button>` : ''}</div>
           <div style="flex:1;overflow-y:auto;padding:16px" id="mscroll">
             ${msgs.length ? msgs.map((m) => m.role === 'user' ? `<div class="msg me"><div class="avatar">${m.content.startsWith('From Chief of Staff:') ? 'CS' : 'JU'}</div><div class="bubble">${esc(m.content)}</div></div>`
@@ -51,7 +58,7 @@ export async function render(el, ctx) {
           </div>
           <div style="padding:12px;border-top:1px solid var(--border)"><div class="composer row" style="padding:6px 8px">
             <textarea class="grow" id="amsg" rows="1" style="border:0;outline:none;background:transparent;padding:6px;resize:none" placeholder="Message ${esc(a.name)}" ${usable && a.enabled && !busy ? '' : 'disabled'}></textarea>
-            <button class="btn btn-primary btn-sm" id="asend" ${usable && a.enabled && !busy ? '' : 'disabled'}>${icon('send')}</button></div></div>
+            <button class="btn btn-ghost btn-sm" id="adata" title="Attach data from a custom API connection" ${usable && a.enabled && !busy ? '' : 'disabled'}>${icon('globe')}</button><button class="btn btn-primary btn-sm" id="asend" ${usable && a.enabled && !busy ? '' : 'disabled'}>${icon('send')}</button></div></div>
         </div>
         <div class="mcol profile" style="padding:18px">
           <div class="avatar ai lg" style="margin-bottom:10px">${ini(a.name)}</div>
@@ -94,6 +101,7 @@ export async function render(el, ctx) {
     });
     const nt = $('#newt', el); if (nt) nt.onclick = () => { thread = null; msgs = []; draw(); };
     $('#asend', el).onclick = send;
+    const ad = $('#adata', el); if (ad) ad.onclick = async () => { const block = await attachData(); if (!block) return; const m = $('#amsg', el); m.value = (m.value.trim() ? m.value.trim() + '\n\n' : '') + block + '\n\n'; m.rows = 6; m.focus(); };
     $('#amsg', el).onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } };
   };
 

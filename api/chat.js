@@ -19,7 +19,7 @@ const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 
 export default handler(['POST'], async (req, body) => {
   const { user, db, admin } = await requireOwner(req);
-  const message = String(body.message || '').trim().slice(0, 20000);
+  const message = String(body.message || '').trim().slice(0, 40000); // room for attached connection data
   const attachments = Array.isArray(body.attachments) ? body.attachments.slice(0, MAX_ATTACH + 1) : [];
   if (!message && !attachments.length) throw new HttpError(400, 'Type a message');
   if (attachments.length > MAX_ATTACH) throw new HttpError(400, `Up to ${MAX_ATTACH} files per message`);

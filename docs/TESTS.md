@@ -76,6 +76,12 @@ Run everything with `npm run test:all`. The unit, database and API tests need no
 | Slides: validation, one AI call per module, joined deck, approval | build "slides" ×3; db "…program_decks…"; e2e 37 |
 | PowerPoint: real file, every slide and speaker notes, CTA label | build "pptx"; e2e 37 (download) |
 | Deck viewer edits with version check; PDF print layout | build "slide HTML"; e2e 37 |
+| **Team and voice (Phase 11)** | |
+| 17 agents: unique, ordered, routed by Chief of Staff, seeded by bootstrap; library drafts | chat "agent seeds"; connect "agents"; api "brain: bootstrap seeds all 17…"; e2e 38 |
+| Hands-free Jarvis: listens again after answering, ends on "goodbye" or two silences, no transcript | e2e 39 |
+| Tella: list, import once as a voice sample, repurpose into drafts, clear errors | connect "tella" ×3; e2e 40 |
+| Custom connections: https public only, private DNS refused, no redirects, GET only, key encrypted and hidden, owner-only changes | connect "private addresses", "connection validation", "requests stay…", "safeGet", "custom connections…"; db "custom_connections…"; e2e 41 |
+| Design rules feed graphics and funnel pages | connect "design rules"; db "…design rules capped"; e2e 42 |
 | **MCP and routines** | |
 | MCP protocol (current and legacy clients, headers, versions, Origin) | mcp protocol tests ×10; api "mcp over HTTP"; checked against the official MCP SDK client |
 | Revocable read or read-write tokens, hashed | mcp "tokens"; api "account … MCP token", "mcp over HTTP"; db "mcp tables"; e2e 26 |

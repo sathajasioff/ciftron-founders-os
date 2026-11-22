@@ -2,6 +2,8 @@
 import { handler, requireOwner, HttpError, audit } from './_lib/http.js';
 import { encrypt, last4 } from './_lib/crypto.js';
 import { PROVIDERS, testProvider, getSecret } from './_lib/providers.js';
+import { decrypt } from './_lib/crypto.js';
+import { validateConnection, safeGet } from './_lib/connect.js';
 
 export default handler(['GET', 'POST', 'DELETE'], async (req, body) => {
   const { user, db, admin } = await requireOwner(req, { ownerOnly: req.method !== 'GET' });
@@ -12,7 +14,9 @@ export default handler(['GET', 'POST', 'DELETE'], async (req, body) => {
       db.from('connections').select('provider, config, enabled'),
     ]);
     if (error) throw error;
+    const custom = keys.filter((k) => k.provider.startsWith('custom:')).map((k) => ({ id: k.provider.slice(7), last4: k.last4 }));
     return {
+      custom,
       providers: Object.entries(PROVIDERS).map(([id, p]) => {
         const ks = keys.filter((k) => k.provider === id);
         const conn = (conns || []).find((c) => c.provider === id);
@@ -29,6 +33,9 @@ export default handler(['GET', 'POST', 'DELETE'], async (req, body) => {
       }),
     };
   }
+
+  // Custom read-only API connections (owner only). The key is stored encrypted under provider 'custom:<id>'.
+  if (String(body.action || '').startsWith('custom_')) return customConnection(body, { user, db, admin });
 
   const p = PROVIDERS[body.provider];
   if (!p) throw new HttpError(400, 'Unknown provider');
@@ -73,3 +80,49 @@ export default handler(['GET', 'POST', 'DELETE'], async (req, body) => {
   await audit(db, user.id, 'key_saved', 'provider', body.provider);
   return { ok: true };
 });
+
+async function customConnection(body, { user, db, admin }) {
+  const one = async (q) => { const { data, error } = await q; if (error) throw new HttpError(400, error.message); return data; };
+  const kp = (id) => `custom:${id}`;
+  if (body.action === 'custom_save') {
+    let c;
+    try { c = validateConnection(body.connection); } catch (e) { throw new HttpError(400, e.message); }
+    let row;
+    if (body.id) {
+      const cur = await one(db.from('custom_connections').select('id, version').eq('id', String(body.id)).maybeSingle());
+      if (!cur) throw new HttpError(404, 'Connection not found');
+      row = await one(db.from('custom_connections').update({ ...c, version: cur.version + 1, last_status: null, last_message: null }).eq('id', cur.id).eq('version', cur.version).select('id').maybeSingle());
+      if (!row) throw new HttpError(409, 'Changed somewhere else. Reload and try again.');
+    } else {
+      row = await one(db.from('custom_connections').insert({ owner_id: user.id, ...c, version: 1 }).select('id').single());
+    }
+    const key = typeof body.key === 'string' ? body.key.trim() : '';
+    if (key) {
+      if (key.length > 4000) throw new HttpError(400, 'That key is too long');
+      const { error } = await admin.from('provider_keys').upsert({ owner_id: user.id, provider: kp(row.id), field: 'api_key', ...encrypt(key), last4: last4(key), status: 'untested', test_message: null }, { onConflict: 'owner_id,provider,field' });
+      if (error) throw error;
+    }
+    if (c.auth === 'none') await admin.from('provider_keys').delete().eq('owner_id', user.id).eq('provider', kp(row.id));
+    await audit(db, user.id, 'custom_connection_saved', 'custom_connection', row.id);
+    return { id: row.id };
+  }
+  const conn = await one(db.from('custom_connections').select('*').eq('id', String(body.id || '')).maybeSingle());
+  if (!conn) throw new HttpError(404, 'Connection not found');
+  if (body.action === 'custom_delete') {
+    await admin.from('provider_keys').delete().eq('owner_id', user.id).eq('provider', kp(conn.id));
+    await one(db.from('custom_connections').delete().eq('id', conn.id));
+    await audit(db, user.id, 'custom_connection_removed', 'custom_connection', conn.id);
+    return { ok: true };
+  }
+  if (body.action === 'custom_test') {
+    const { data: k } = await admin.from('provider_keys').select('ciphertext, iv, auth_tag').eq('owner_id', user.id).eq('provider', kp(conn.id)).eq('field', 'api_key').maybeSingle();
+    if (conn.auth !== 'none' && !k) throw new HttpError(400, 'Add the key first');
+    const path = conn.endpoints[0]?.path || '/';
+    let msg, status;
+    try { const r = await safeGet(conn, path, k ? decrypt(k) : null); status = r.ok ? 'ok' : 'error'; msg = r.ok ? `Works: GET ${path} returned ${r.status}` : `GET ${path} returned ${r.status}`; }
+    catch (e) { status = 'error'; msg = e.message; }
+    await one(db.from('custom_connections').update({ last_status: status, last_message: msg.slice(0, 300), last_tested_at: new Date().toISOString(), version: conn.version + 1 }).eq('id', conn.id).eq('version', conn.version));
+    return { ok: status === 'ok', message: msg };
+  }
+  throw new HttpError(400, 'Unknown action');
+}

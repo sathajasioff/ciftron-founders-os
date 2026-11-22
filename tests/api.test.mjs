@@ -57,16 +57,16 @@ test('keys: saved encrypted, status never returns a secret, blank keeps the key,
   assert.ok(fake.tables.audit_log.some((a) => a.action === 'key_saved'));
 });
 
-test('brain: bootstrap seeds nine agents and offers once; search needs the OpenAI key', async () => {
+test('brain: bootstrap seeds all 17 agents and offers once; search needs the OpenAI key', async () => {
   fake = installFakeSupabase({ external: async (url) => (url.pathname.endsWith('/embeddings') ? ok({ data: [{ index: 0, embedding: Array(1536).fill(0.01) }] }) : ok({})) });
   fake.tables.__rpc = { match_chunks: () => [{ id: 'c', source_name: 'about_me', content: 'brokers', similarity: 0.8 }] };
   const brain = await load('brain');
   const b = await invoke(brain, { body: { action: 'bootstrap' } });
   assert.equal(b.status, 200);
-  assert.equal(fake.tables.agents.length, 9);
+  assert.equal(fake.tables.agents.length, 17);
   assert.ok(fake.tables.offers.length >= 3);
   await invoke(brain, { body: { action: 'bootstrap' } });
-  assert.equal(fake.tables.agents.length, 9, 'bootstrap is idempotent');
+  assert.equal(fake.tables.agents.length, 17, 'bootstrap is idempotent');
   const miss = await invoke(brain, { body: { action: 'search', query: 'brokers' } });
   assert.equal(miss.status, 400);
   assert.match(miss.body.error, /OpenAI/);

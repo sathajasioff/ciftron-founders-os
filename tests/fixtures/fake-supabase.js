@@ -55,7 +55,7 @@ const db = (window.__FAKE_DB__ ||= {
   mcp_edit_log: [{ id: 7, owner_id: OWNER, token_id: 'mt1', action: 'update', tool: 'update_goal', table_name: 'goals', row_id: 'g9', previous_value: { current_value: 2 }, new_value: { current_value: 5 }, undone_at: null, created_at: '2026-11-21T11:00:00Z' }],
   programs: [], program_modules: [], program_lessons: [],
   funnel_pages: [{ id: 'pg1', owner_id: OWNER, funnel_id: 'fn1', funnel_version_id: 'fv1', version_no: 1, style: 'brand', html: '<!doctype html><html><head><style>body{background:#111;color:#fff}</style></head><body><h1>Find your lead leaks</h1></body></html>', public_token: 'tok_abcdefghijklmnopqrstu', shared: true, status: 'draft', approval_id: null, created_at: old }],
-  program_decks: [],
+  program_decks: [], custom_connections: [],
   approvals: [
     { id: 'apf1', owner_id: OWNER, type: 'Idea', title: 'Book the leak audit', payload: { body: 'Bottom of funnel', funnel_stage: 'bofu', format: 'Carousel', hook: 'Your ads are fine. Your follow-up is not.' }, tags: ['bofu'], language: 'en', source_agent: 'Content Strategist', target_module: 'content', status: 'pending', trashed_at: null, authored_by: 'ai', version: 1, created_at: '2026-11-05T10:00:00Z', updated_at: old },
     { id: 'ap1', owner_id: OWNER, type: 'Hooks', title: '5 Reel hooks: mortgage follow-up', payload: { body: '1. Your leads are not cold. Your follow-up is slow.\n2. [PROOF NEEDED]' }, tags: ['mortgage'], language: 'en', source_agent: 'Content Strategist', target_module: 'content', status: 'pending', trashed_at: null, authored_by: 'ai', version: 1, created_at: old, updated_at: old },

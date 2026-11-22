@@ -138,13 +138,17 @@ export async function render(el, ctx) {
       <div class="card"><div class="card-head"><h3>Photos</h3><span class="xs muted">${photos.length} of 20</span></div>
         <div class="grid" style="grid-template-columns:repeat(5,1fr);gap:8px">${photos.map((u, i) => `<div style="position:relative"><img src="${esc(u)}" alt="" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px"><button class="star" data-rmph="${i}" style="position:absolute;top:2px;right:2px;background:var(--surface);border-radius:50%">${icon('x')}</button></div>`).join('')}
         ${photos.length < 20 ? `<label class="photo-slot" style="cursor:pointer">+<input type="file" id="photof" accept="image/*" multiple hidden></label>` : ''}</div></div>
-    </div><div class="row" style="margin-top:14px"><button class="btn btn-primary" id="bsave">${t('c.save')} brand board</button></div>`;
+    </div>
+    <div class="card" style="margin-top:14px"><div class="card-head"><h3>Design rules</h3><span class="xs muted">Used for every graphic and designed funnel page</span></div>
+      <textarea class="textarea" id="drules" maxlength="4000" style="min-height:110px" placeholder="Example: lots of white space, one accent color per design, photos of me not stock, no gradients, headlines in sentence case, logo bottom right">${esc(board.design_rules || '')}</textarea></div>
+    <div class="row" style="margin-top:14px"><button class="btn btn-primary" id="bsave">${t('c.save')} brand board</button></div>`;
     const collect = () => {
       board.palettes = board.palettes.map((p, i) => ({ name: pane.querySelector(`[data-pn="${i}"]`).value, colors: p.colors.map((_, j) => pane.querySelector(`[data-pc="${i}:${j}"]`).value.toUpperCase()) }));
       board.fonts = board.fonts.map((f, i) => ({ ...f, heading: pane.querySelector(`[data-fh="${i}"]`).value, body: pane.querySelector(`[data-fb="${i}"]`).value }));
+      const dr = pane.querySelector('#drules'); if (dr) board.design_rules = dr.value.trim().slice(0, 4000) || null;
     };
     const save = async (msg = 'Brand board saved') => {
-      const row = { palettes: board.palettes, fonts: board.fonts, logo_path: board.logo_path || null, photo_paths: board.photo_paths || [] };
+      const row = { palettes: board.palettes, fonts: board.fonts, logo_path: board.logo_path || null, photo_paths: board.photo_paths || [], design_rules: board.design_rules ?? null };
       try {
         if (board._new) { await q(live.sb.from('brand_board').insert({ owner_id: live.ownerId, ...row })); }
         else { const { data, error } = await live.sb.from('brand_board').update({ ...row, version: board.version + 1 }).eq('owner_id', live.ownerId).eq('version', board.version).select().maybeSingle(); if (error || !data) throw new Error(error?.message || 'Changed elsewhere. Reload and try again.'); }

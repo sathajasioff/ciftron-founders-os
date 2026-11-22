@@ -9,7 +9,7 @@ const EMAIL = ['Email', 'Email sequence'];
 
 const ui = { view: 'pending', tag: '', type: '', lang: '' };
 const FORMAT = { Hooks: 'Short video', 'Video script': 'Short video', Carousel: 'Carousel', 'Written post': 'Written post', Caption: 'Written post', 'Ad copy': 'Meta Ad copy', Email: 'Email', 'Email sequence': 'Email', 'Content plan': 'Content plan', Idea: 'Idea', Brief: 'Idea' };
-const MODULE = { content: 'Content', emails: 'Emails', funnels: 'Funnels', graphics: 'Graphics', programs: 'Programs', goals: 'Goals' };
+const MODULE = { content: 'Content', emails: 'Emails', funnels: 'Funnels', graphics: 'Graphics', programs: 'Programs', goals: 'Goals', library: 'Library' };
 const ago = (d) => { const s = (Date.now() - new Date(d)) / 1000; return s < 60 ? 'just now' : s < 3600 ? Math.round(s / 60) + ' min ago' : s < 86400 ? Math.round(s / 3600) + ' h ago' : new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); };
 
 export async function render(el, ctx) {

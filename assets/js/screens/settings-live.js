@@ -5,6 +5,7 @@ import { live, api, q } from '../live.js';
 import { setTheme, paintChrome } from '../app.js';
 import { hlWrite } from '../hl-ui.js';
 import { mountMcp } from '../mcp-ui.js';
+import { mountCustom } from '../custom-ui.js';
 import { mountErrors } from '../errors-ui.js';
 import { mountTeam } from '../team-ui.js';
 
@@ -24,7 +25,7 @@ const DESC = {
   youtube: 'YouTube research for Content (public stats only).',
   google: 'Your own Google Cloud OAuth client. Read-only: Calendar events in Jarvis and Meet transcripts in Calls.',
   stripe: 'Restricted key with read access to charges and subscriptions. Revenue reads payments and MRR; nothing is changed.',
-  mcp: 'Connect another MCP server.',
+  tella: 'Your Tella recordings. Import transcripts into the Brain and turn videos into post drafts (Content, Tella tab). Read-only.',
 };
 const FIELD_LABEL = { private_integration_token: 'Private Integration token', location_id: 'Location ID', access_token: 'System user access token', ad_account_id: 'Ad account ID (act_...)', api_key: 'API key', api_token: 'API token', voice_id: 'Voice ID', token: 'Token', server_url: 'Server URL', client_id: 'OAuth client ID', client_secret: 'OAuth client secret' };
 const NEEDED_NOW = ['anthropic', 'openai'];
@@ -33,7 +34,7 @@ const ui = { q: '', filter: 'all' };
 
 export async function render(el) {
   let providers = [], log = [], tz = 'America/Toronto';
-  let errorsCard = null, teamCard = null;
+  let errorsCard = null, teamCard = null, customCard = null;
   const load = async () => {
     const [k, l] = await Promise.all([api('keys', { method: 'GET' }), q(live.sb.from('hl_write_log').select('created_at, action, target, status').order('created_at', { ascending: false }).limit(20))]);
     providers = k.providers; log = l;
@@ -80,6 +81,7 @@ export async function render(el) {
         <div class="card stack" id="cvcard"><div class="card-head" style="margin:0"><h3>HighLevel custom values (OS_)</h3>${providers.find((p) => p.id === 'highlevel')?.connected ? '<button class="btn btn-sm" id="cvload">Load</button>' : '<span class="chip">Connect HighLevel</span>'}</div>
           <p class="small muted">The OS can only create or change custom values whose name starts with OS_. Each change is previewed and logged.</p><div id="cvlist"></div></div>
         <div class="card stack" id="teamcard" style="grid-column:1/-1"></div>
+        <div class="card stack" id="customcard" style="grid-column:1/-1"></div>
         ${isOwner ? '<div class="card stack" id="mcpcard" style="grid-column:1/-1"></div>' : ''}
         <div class="card stack" id="errcard" style="grid-column:1/-1"></div>
       </div>
@@ -110,6 +112,7 @@ export async function render(el) {
       b.disabled = false;
     };
     if (!teamCard) { teamCard = $('#teamcard', el); mountTeam(teamCard); } else $('#teamcard', el).replaceWith(teamCard);
+    if (!customCard) { customCard = $('#customcard', el); mountCustom(customCard, { isOwner }); } else $('#customcard', el).replaceWith(customCard);
     if (isOwner) mountMcp($('#mcpcard', el));
     // The error log loads once per visit; search redraws reuse the same card.
     if (!errorsCard) { errorsCard = $('#errcard', el); mountErrors(errorsCard); } else $('#errcard', el).replaceWith(errorsCard);

@@ -15,6 +15,7 @@ A private, single-owner AI command center on top of HighLevel. HighLevel is the 
 | 8 | My feed (4 platforms), content funnel, voice playbook, model picker, Apify cost tracking | **Done** (run migration 008) |
 | 9 | Calls (Google Meet, upload, paste) with AI review, Revenue (Stripe + logged), Google Calendar in Jarvis | **Done** (run migration 009, Google and Stripe setup) |
 | 10 | Designed funnel pages (preview link, Copy for HighLevel, HTML download), program slides (PowerPoint and PDF) | **Done** (run migration 010) |
+| 11 | 17 agents, hands-free Jarvis conversation, Tella, custom read-only API connections, design rules | **Done** (run migration 011) |
 | 7 | Security headers (CSP, HSTS), error log, API tests for every feature, domain steps, cut list | **Done** (run migration 006, add the domain: `docs/SETUP.md`) |
 
 ## Live vs demo

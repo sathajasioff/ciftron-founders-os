@@ -45,10 +45,10 @@ Button label: 2 to 5 words, taken from or close to the CTA given.
 ${HOUSE_RULES.map((r) => '- ' + r).join('\n')}
 Return only JSON: {"hero": {"layout": "centered" or "split", "eyebrow": "...", "image_note": "..."}, "sections": [{"layout": "...", "kicker": "...", "image_note": "only for split"}], "proof_note": "what real proof to add here, e.g. client results screenshots", "button_label": "...", "closing_kicker": "..."}`;
 
-export function pagePrompt({ out, offer, funnelName, instruction, language }) {
+export function pagePrompt({ out, offer, funnelName, instruction, language, rules }) {
   return `Funnel: ${funnelName}${offer ? `\nOffer: ${offer.name}` : ''}
 Language for kickers, labels and notes: ${language || 'English'}
-${instruction ? `Owner's design notes: ${instruction}\n` : ''}
+${rules ? `Owner's standing design rules: ${String(rules).slice(0, 1500)}\n` : ''}${instruction ? `Owner's design notes for this page: ${instruction}\n` : ''}
 # Approved copy
 Headline: ${out.headline}
 Subheadline: ${out.subheadline}

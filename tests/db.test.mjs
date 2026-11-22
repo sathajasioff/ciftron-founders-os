@@ -244,3 +244,22 @@ test('funnel_pages and program_decks: workspace-scoped, tokens unique and long, 
   await as(A, `delete from programs where id = $1`, [p.id]);
   assert.equal((await as(A, 'select * from program_decks')).rows.length, 0, 'decks go with their program');
 });
+
+test('custom_connections: owner writes, members read, strangers see nothing; checks on address and auth; design rules capped', async () => {
+  await asService(`insert into workspace_members (owner_id, member_id, email) values ($1, $2, 'member@example.com') on conflict do nothing`, [A, M]);
+  const { rows: [c] } = await as(A, `insert into custom_connections (name, base_url, auth, endpoints) values ('Calendly', 'https://api.calendly.com', 'bearer', '[{"name":"Events","path":"/scheduled_events"}]') returning id, owner_id, version`);
+  assert.deepEqual([c.owner_id, c.version], [A, 1]);
+  await assert.rejects(as(A, `insert into custom_connections (name, base_url) values ('Bad', 'http://x.com')`), /check/);
+  await assert.rejects(as(A, `insert into custom_connections (name, base_url, auth) values ('Bad2', 'https://x.com', 'cookie')`), /check/);
+  await assert.rejects(as(A, `insert into custom_connections (name, base_url, auth_name) values ('Bad3', 'https://x.com', 'X Key')`), /check/);
+  await assert.rejects(as(A, `insert into custom_connections (name, base_url) values ('Calendly', 'https://x.com')`), /duplicate|unique/);
+  await assert.rejects(as(A, `update custom_connections set name = 'C2', version = 1 where id = $1`, [c.id]), /version_conflict/);
+  assert.equal((await as(M, 'select name from custom_connections')).rows.length, 1, 'members can see and use connections');
+  assert.equal((await as(M, `update custom_connections set name = 'Hacked', version = 2 where id = $1 returning id`, [c.id])).rows.length, 0, 'members cannot change them');
+  await assert.rejects(as(M, `insert into custom_connections (name, base_url, owner_id) values ('Mine', 'https://x.com', $1)`, [A]), /row-level security|violates/);
+  assert.equal((await as(B, 'select * from custom_connections')).rows.length, 0);
+  await as(A, `insert into brand_board (owner_id, design_rules) values ($1, 'No gradients') on conflict (owner_id) do update set design_rules = 'No gradients'`, [A]);
+  await assert.rejects(as(A, `update brand_board set design_rules = 'stale'`), /version_conflict/);
+  await assert.rejects(as(A, `update brand_board set design_rules = repeat('x', 4001), version = version + 1`), /check/);
+  await asService(`delete from workspace_members where member_id = $1`, [M]);
+});
