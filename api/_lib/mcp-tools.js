@@ -12,7 +12,7 @@ const READ = { readOnlyHint: true, destructiveHint: false, openWorldHint: false 
 const WRITE = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false };
 const obj = (properties = {}, required = []) => ({ type: 'object', properties, required, additionalProperties: false });
 
-export class ToolError extends Error {}
+export class ToolError extends Error { constructor(m) { super(m); this.name = 'ToolError'; } }
 const fail = (m) => { throw new ToolError(m); };
 
 // A read-only view of the admin client that always adds the owner filter.

@@ -56,7 +56,7 @@ BOARD = {'pipelines': [{'id': 'p1', 'name': 'Agency Pipeline'}], 'pipeline': {'i
                     {'id': 'o2', 'name': 'Sophie deal', 'pipelineStageId': 's1', 'status': 'open', 'monetaryValue': 697, 'createdAt': '2026-11-01T10:00:00Z', 'contact': {'id': 'c2', 'name': 'Sophie Gagnon', 'tags': []}}],
   'stats': {'total': 2, 'newLeads7d': 1, 'qualified': 1, 'appointments': 0, 'active': 2, 'won': 0, 'lost': 0, 'openValue': 1194}}
 
-srv = subprocess.Popen([sys.executable, '-m', 'http.server', '8767'], cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+srv = subprocess.Popen([sys.executable, '-I', os.path.join(ROOT, 'tests', 'serve.py'), '8767'], cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 time.sleep(1)
 errors = []
 shots = os.environ.get('SHOTS')
@@ -323,9 +323,21 @@ try:
         pg.locator('[data-undo="7"]').click(); pg.wait_for_selector('text=Restored the previous value')
         assert [c for c in calls if c[0] == 'account'][-1][2] == {'action': 'mcp_undo', 'id': 7}
         shot(pg, 'mcp')
+
+        # 27. Phase 7: error log card, clear, and browser errors reported to the server
+        pg.wait_for_selector('text=OpenRouter timed out')
+        pg.click('#errclear'); pg.wait_for_selector('text=Error log cleared')
+        assert [c for c in calls if c[0] == 'account'][-1][2] == {'action': 'errors_clear'}
+        pg.evaluate("window.dispatchEvent(new ErrorEvent('error', { message: 'Test boom', error: new Error('Test boom') }))")
+        pg.wait_for_timeout(300)
+        logged = [c for c in calls if c[0] == 'account' and c[2].get('action') == 'log_error']
+        assert len(logged) == 1 and logged[0][2]['message'] == 'Test boom' and logged[0][2]['route'] == '#connections', logged
+        pg.evaluate("window.dispatchEvent(new ErrorEvent('error', { message: 'Test boom', error: new Error('Test boom') }))")
+        pg.wait_for_timeout(300)
+        assert len([c for c in calls if c[0] == 'account' and c[2].get('action') == 'log_error']) == 1, 'same error reported twice'
         b.close()
 finally:
     srv.terminate()
 if errors:
     print('\n'.join(errors)); sys.exit(1)
-print('OK: live mode e2e (login, Brain, keys, Approvals, Chat, Team, Pipeline, HighLevel writes, Jarvis, Content, Emails, Funnels, Graphics, Vault, Goals, Programs, Routines, MCP)')
+print('OK: live mode e2e (login, Brain, keys, Approvals, Chat, Team, Pipeline, HighLevel writes, Jarvis, Content, Emails, Funnels, Graphics, Vault, Goals, Programs, Routines, MCP, Error log, CSP)')

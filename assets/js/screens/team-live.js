@@ -38,15 +38,15 @@ export async function render(el, ctx) {
       <div class="messenger">
         <div class="mcol agents">${agents.map((x) => `<div class="agent-row ${x.slug === a.slug ? 'active' : ''} ${x.enabled ? '' : 'off'}" data-agent="${x.slug}">
           <div class="avatar ai">${ini(x.name)}</div><div class="grow"><div class="small" style="font-weight:600">${esc(x.name)} ${x.pinned ? '<span class="chip accent" style="margin-left:4px">Pinned</span>' : ''}</div>
-          <div class="xs muted">${ACTIVE.includes(x.slug) ? esc(x.role || '') : 'Arrives in Phase 5'}</div></div>${x.enabled ? '<span class="dot on"></span>' : ''}</div>`).join('')}</div>
+          <div class="xs muted">${ACTIVE.includes(x.slug) ? esc(x.role || '') : 'Not available'}</div></div>${x.enabled ? '<span class="dot on"></span>' : ''}</div>`).join('')}</div>
         <div class="mcol convo" style="display:flex;flex-direction:column">
-          <div class="row between" style="padding:12px 16px;border-bottom:1px solid var(--border)"><div><b>${esc(a.name)}</b><div class="xs muted">${usable ? (a.slug === 'chief-of-staff' ? 'Routes work to the right specialist' : ['crm-assistant', 'marketing-analyst'].includes(a.slug) ? 'Reads live HighLevel and Meta numbers' : 'Drafts go to Approvals') : 'Arrives in Phase 5'}</div></div>
+          <div class="row between" style="padding:12px 16px;border-bottom:1px solid var(--border)"><div><b>${esc(a.name)}</b><div class="xs muted">${usable ? (a.slug === 'chief-of-staff' ? 'Routes work to the right specialist' : ['crm-assistant', 'marketing-analyst'].includes(a.slug) ? 'Reads live HighLevel and Meta numbers' : 'Drafts go to Approvals') : 'Not available'}</div></div>
             ${thread ? `<button class="btn btn-sm btn-ghost" id="newt">${icon('plus')} New thread</button>` : ''}</div>
           <div style="flex:1;overflow-y:auto;padding:16px" id="mscroll">
             ${msgs.length ? msgs.map((m) => m.role === 'user' ? `<div class="msg me"><div class="avatar">${m.content.startsWith('From Chief of Staff:') ? 'CS' : 'JU'}</div><div class="bubble">${esc(m.content)}</div></div>`
               : m.role === 'system' ? `<div class="notice neutral small" style="margin:0 0 14px">${icon('info')}<span>${esc(m.content)}</span></div>`
               : `<div class="msg"><div class="avatar ai">${ini(a.name)}</div><div class="bubble">${md(m.content)}</div></div>`).join('')
-              : `<div class="empty small">${usable ? (a.slug === 'chief-of-staff' ? 'Tell me what you need. I route it to the right specialist.' : esc(a.role || '') + '. English or Quebec French.') : 'This agent is built in Phase 5.'}</div>`}
+              : `<div class="empty small">${usable ? (a.slug === 'chief-of-staff' ? 'Tell me what you need. I route it to the right specialist.' : esc(a.role || '') + '. English or Quebec French.') : 'This agent is not available.'}</div>`}
             ${busy ? `<div class="msg"><div class="avatar ai">${ini(a.name)}</div><div class="bubble muted small">Working...</div></div>` : ''}
           </div>
           <div style="padding:12px;border-top:1px solid var(--border)"><div class="composer row" style="padding:6px 8px">
@@ -59,7 +59,7 @@ export async function render(el, ctx) {
           <div class="row between small" style="margin:10px 0"><span style="font-weight:600">${t('team.enable')}</span>${toggleHtml(a.enabled, `id="aen" ${a.pinned || !usable ? 'disabled' : ''}`)}</div>
           <div class="divider"></div>
           <div class="row between"><div class="eyebrow">${t('team.instructions')}</div>${usable ? `<button class="btn btn-sm btn-ghost" id="aedit">${t('c.edit')}</button>` : ''}</div>
-          <p class="small" style="margin-top:6px;white-space:pre-wrap">${esc(a.instructions || 'Written when this agent is built.')}</p>
+          <p class="small" style="margin-top:6px;white-space:pre-wrap">${esc(a.instructions || 'No instructions yet.')}</p>
           <div class="eyebrow" style="margin-top:14px">${t('team.history')}</div>
           ${history.length ? history.map((h) => `<a href="#approvals" class="row between small" style="text-decoration:none;margin:6px 0"><span class="grow" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(h.title)}</span><span class="chip ${h.status === 'approved' ? 'ok' : h.status === 'passed' ? '' : 'warn'}">${h.status}</span></a>`).join('') : '<p class="small muted" style="margin-top:6px">Nothing yet</p>'}
           <div class="row between" style="margin-top:14px"><div class="eyebrow">${t('team.routines')}</div>${usable ? `<button class="btn btn-sm btn-ghost" id="rnew">${icon('plus')} Add</button>` : ''}</div>

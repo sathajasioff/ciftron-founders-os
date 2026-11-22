@@ -2,15 +2,16 @@
 import { handler, requireOwner, HttpError, audit } from './_lib/http.js';
 import { newToken, hashToken, tokenPrefix } from './_lib/mcp.js';
 import { undoEdit } from './_lib/mcp-tools.js';
+import { errorRow } from './_lib/errors.js';
 
 // Everything the OS stores, minus secrets and embeddings.
 const EXPORT_TABLES = ['profiles', 'offers', 'brain_sources', 'brain_facts', 'style_guides', 'brand_dna', 'agents', 'threads', 'messages',
   'agent_routines', 'approvals', 'content_items', 'research_creators', 'research_posts', 'learning_signals', 'funnels', 'funnel_versions',
   'email_sequences', 'brand_board', 'graphics', 'graphic_versions', 'programs', 'program_modules', 'program_lessons', 'vault_items',
-  'goals', 'goal_items', 'connections', 'audit_log', 'hl_write_log'];
+  'goals', 'goal_items', 'connections', 'audit_log', 'hl_write_log', 'error_log'];
 
 // Delete order respects foreign keys. Profiles stay so the account still works.
-const DELETE_TABLES = ['mcp_edit_log', 'mcp_tokens', 'hl_write_log', 'goal_items', 'goals', 'vault_items', 'program_lessons', 'program_modules',
+const DELETE_TABLES = ['error_log', 'mcp_edit_log', 'mcp_tokens', 'hl_write_log', 'goal_items', 'goals', 'vault_items', 'program_lessons', 'program_modules',
   'programs', 'graphic_versions', 'graphics', 'brand_board', 'email_sequences', 'funnel_versions', 'funnels', 'learning_signals', 'research_posts',
   'research_creators', 'content_items', 'approvals', 'agent_routines', 'messages', 'threads', 'agents', 'brand_dna', 'style_guides',
   'brain_facts', 'brain_chunks', 'brain_sources', 'offers', 'connections', 'provider_keys', 'audit_log'];
@@ -62,6 +63,26 @@ export default handler(['POST'], async (req, body) => {
     } catch (e) {
       throw new HttpError(409, e.message);
     }
+  }
+
+  // Browser errors. Redacted like server errors, and capped so a loop cannot flood the log.
+  if (body.action === 'log_error') {
+    const since = new Date(Date.now() - 3600e3).toISOString();
+    const { count } = await admin.from('error_log').select('id', { count: 'exact', head: true }).eq('owner_id', user.id).eq('source', 'browser').gte('created_at', since);
+    if (count >= 30) return { ok: true, dropped: true };
+    const d = body.detail && typeof body.detail === 'object' ? body.detail : {};
+    const row = errorRow({ ownerId: user.id, source: 'browser', route: String(body.route || '').slice(0, 200), error: String(body.message || 'Unknown browser error'),
+      detail: { stack: String(d.stack || '').slice(0, 3000), file: String(d.file || '').slice(0, 300), line: d.line, col: d.col, agent: String(req.headers['user-agent'] || '').slice(0, 200) } });
+    const { error } = await admin.from('error_log').insert(row);
+    if (error) throw new HttpError(500, error.message);
+    return { ok: true };
+  }
+
+  if (body.action === 'errors_clear') {
+    const { error } = await admin.from('error_log').delete().eq('owner_id', user.id);
+    if (error) throw new HttpError(500, error.message);
+    await audit(db, user.id, 'errors_cleared', 'error_log', null);
+    return { ok: true };
   }
 
   if (body.action === 'delete') {

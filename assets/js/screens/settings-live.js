@@ -5,6 +5,7 @@ import { live, api, q } from '../live.js';
 import { setTheme, paintChrome } from '../app.js';
 import { hlWrite } from '../hl-ui.js';
 import { mountMcp } from '../mcp-ui.js';
+import { mountErrors } from '../errors-ui.js';
 
 const HL_SCOPES = {
   read: ['locations.readonly', 'opportunities.readonly', 'contacts.readonly', 'products.readonly', 'funnels/funnel.readonly', 'socialplanner/account.readonly', 'locations/customValues.readonly'],
@@ -28,6 +29,7 @@ const ui = { q: '', filter: 'all' };
 
 export async function render(el) {
   let providers = [], log = [];
+  let errorsCard = null;
   const load = async () => {
     const [k, l] = await Promise.all([api('keys', { method: 'GET' }), q(live.sb.from('hl_write_log').select('created_at, action, target, status').order('created_at', { ascending: false }).limit(20))]);
     providers = k.providers; log = l;
@@ -68,6 +70,7 @@ export async function render(el) {
         <div class="card stack" id="cvcard"><div class="card-head" style="margin:0"><h3>HighLevel custom values (OS_)</h3>${providers.find((p) => p.id === 'highlevel')?.connected ? '<button class="btn btn-sm" id="cvload">Load</button>' : '<span class="chip">Connect HighLevel</span>'}</div>
           <p class="small muted">The OS can only create or change custom values whose name starts with OS_. Each change is previewed and logged.</p><div id="cvlist"></div></div>
         <div class="card stack" id="mcpcard" style="grid-column:1/-1"></div>
+        <div class="card stack" id="errcard" style="grid-column:1/-1"></div>
       </div>
 
       <div class="card" style="margin-top:16px;border-color:color-mix(in srgb,var(--danger) 45%,transparent)">
@@ -96,6 +99,8 @@ export async function render(el) {
       b.disabled = false;
     };
     mountMcp($('#mcpcard', el));
+    // The error log loads once per visit; search redraws reuse the same card.
+    if (!errorsCard) { errorsCard = $('#errcard', el); mountErrors(errorsCard); } else $('#errcard', el).replaceWith(errorsCard);
     const cvl = $('#cvload', el); if (cvl) cvl.onclick = () => loadCustomValues();
     const del = $('#del', el), delbtn = $('#delbtn', el);
     del.oninput = () => { delbtn.disabled = del.value.trim() !== 'delete'; };

@@ -3,6 +3,7 @@
 import { adminClient } from './_lib/http.js';
 import { handleMessage, hashToken, originAllowed, ERR } from './_lib/mcp.js';
 import { buildTools } from './_lib/mcp-tools.js';
+import { logError } from './_lib/errors.js';
 
 export const config = { maxDuration: 60 };
 
@@ -47,11 +48,12 @@ export default async function mcp(req, res) {
   const tools = () => buildTools({ admin: ctx.admin, ownerId: ctx.token.owner_id, token: ctx.token });
 
   try {
-    const out = await handleMessage(msg, req.headers, { tools, authorize });
+    const onError = (e, name) => logError(ctx?.admin, { ownerId: ctx?.token.owner_id, source: 'mcp', route: `tools/call ${name}`, error: e, detail: { token: ctx?.token.name } });
+    const out = await handleMessage(msg, req.headers, { tools, authorize, onError });
     if (out.status === 401) res.setHeader('WWW-Authenticate', 'Bearer realm="ciftron-founders-os"');
     return send(res, out.status, out.body);
   } catch (e) {
-    console.error(e);
+    await logError(ctx?.admin, { ownerId: ctx?.token.owner_id, source: 'mcp', route: msg?.method, status: 500, error: e });
     return send(res, 500, bad(ERR.INTERNAL, 'Server error'));
   }
 }

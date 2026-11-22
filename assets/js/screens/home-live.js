@@ -53,7 +53,7 @@ export async function render(el) {
           <a class="btn btn-sm" href="#pipeline" style="margin-top:10px">${t('nav.pipeline')}</a></div>
         <div class="card"><h3 style="margin-bottom:10px">${t('home.agents')} (7 days)</h3>${Object.keys(agentCounts).length ? Object.entries(agentCounts).map(([n, c]) => `<div class="row" style="margin-bottom:8px"><div class="avatar ai">${esc(n.split(' ').map((w) => w[0]).join('').slice(0, 2))}</div><div class="grow small"><b>${esc(n)}</b><div class="xs muted">${c} draft${c > 1 ? 's' : ''}</div></div></div>`).join('') : '<p class="small muted">No drafts this week.</p>'}
           <a class="btn btn-sm" href="#team">${t('nav.team')}</a></div>
-        <div class="card soft small"><b>${t('home.goals')}</b><p class="muted" style="margin:4px 0 0">Goals with live targets arrive in Phase 5.</p></div>
+        <div class="card soft small"><b>${t('home.goals')}</b><p class="muted" style="margin:4px 0 8px">Targets sync from HighLevel, Meta Ads and Content.</p><a class="btn btn-sm" href="#goals">${t('nav.goals')}</a></div>
       </div>
     </div>`;
 }

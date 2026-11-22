@@ -39,6 +39,7 @@ const db = (window.__FAKE_DB__ ||= {
   vault_items: [{ id: 'v1', owner_id: OWNER, kind: 'url', title: 'Clean pricing page', url: 'https://example.com', note: 'Layout', created_at: old }],
   goals: [], goal_items: [],
   agent_routines: [],
+  error_log: [{ id: 3, owner_id: OWNER, source: 'server', route: '/api/studio', status: 500, message: 'OpenRouter timed out', detail: { action: 'graphic' }, created_at: '2026-11-21T12:00:00Z' }],
   mcp_tokens: [{ id: 'mt1', owner_id: OWNER, name: 'Claude Code laptop', scope: 'read_write', token_prefix: 'cfos_AbCdEfG', last_used_at: '2026-11-21T10:00:00Z', revoked_at: null, created_at: old }],
   mcp_edit_log: [{ id: 7, owner_id: OWNER, token_id: 'mt1', action: 'update', tool: 'update_goal', table_name: 'goals', row_id: 'g9', previous_value: { current_value: 2 }, new_value: { current_value: 5 }, undone_at: null, created_at: '2026-11-21T11:00:00Z' }],
   programs: [], program_modules: [], program_lessons: [],

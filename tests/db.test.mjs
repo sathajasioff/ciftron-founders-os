@@ -148,3 +148,13 @@ test('agent_routines: schedule columns are checked and rows stay with their owne
   await assert.rejects(as(A, `insert into agent_routines (agent_id, cadence, prompt, day_of_month) values ($1, 'monthly', 'x', 31)`, [ag.id]), /check/);
   assert.equal((await as(B, 'select * from agent_routines')).rows.length, 0);
 });
+
+// Phase 7
+test('error_log: owner reads own rows only, and cannot write or delete from the browser', async () => {
+  await asService(`insert into error_log (owner_id, source, route, message) values ($1, 'server', '/api/chat', 'boom'), ($2, 'server', '/api/chat', 'other')`, [A, B]);
+  const r = await as(A, 'select message from error_log');
+  assert.deepEqual(r.rows.map((x) => x.message), ['boom']);
+  await assert.rejects(as(A, `insert into error_log (owner_id, source, message) values ($1, 'browser', 'x')`, [A]), /permission denied/);
+  await assert.rejects(as(A, 'delete from error_log'), /permission denied/);
+  await assert.rejects(as(A, `insert into error_log (owner_id, source, message) values ($1, 'nope', 'x')`, [A]).catch(() => asService(`insert into error_log (owner_id, source, message) values ($1, 'nope', 'x')`, [A])), /check/);
+});

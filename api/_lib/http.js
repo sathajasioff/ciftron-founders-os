@@ -1,5 +1,6 @@
 // Request handling shared by every server function: JSON in/out, owner-only auth.
 import { createClient } from '@supabase/supabase-js';
+import { logError, redact } from './errors.js';
 
 export class HttpError extends Error {
   constructor(status, message, extra) { super(message); this.status = status; this.extra = extra; }
@@ -37,6 +38,7 @@ export async function requireOwner(req) {
   if (error || !data?.user) throw new HttpError(401, 'Session expired. Sign in again.');
   const owner = env('OWNER_EMAIL').trim().toLowerCase();
   if ((data.user.email || '').toLowerCase() !== owner) throw new HttpError(403, 'This OS has a single owner');
+  req.ownerId = data.user.id;
   return { user: data.user, db: userClient(token), admin };
 }
 
@@ -50,8 +52,13 @@ export function handler(methods, fn) {
       if (!res.headersSent) res.status(200).json(out ?? { ok: true });
     } catch (e) {
       const status = e.status || 500;
-      if (status >= 500) console.error(e);
-      res.status(status).json({ error: e.message || 'Server error', ...(e.extra || {}) });
+      if (status >= 500) {
+        let admin = null;
+        try { admin = adminClient(); } catch { /* env missing: console only */ }
+        const action = typeof req.body === 'object' && req.body ? req.body.action : undefined;
+        await logError(admin, { ownerId: req.ownerId || null, source: 'server', route: String(req.url || '').split('?')[0], status, error: e, detail: { method: req.method, action } });
+      }
+      res.status(status).json({ error: redact(e.message || 'Server error'), ...(e.extra || {}) });
     }
   };
 }

@@ -12,7 +12,7 @@ A private, single-owner AI command center on top of HighLevel. HighLevel is the 
 | 4 | HighLevel + Meta Ads (read-only) connections, Pipeline, confirmed writes | **Done** (scopes in `docs/SETUP.md`) |
 | 5 | Jarvis home with voice, creation studio, all nine agents | **Done** (run migration 004) |
 | 6 | MCP server with revocable tokens and undo, recurring routines | **Done** (run migration 005, set `CRON_SECRET`) |
-| 7 | os.ciftron.com, security headers, error logging, tests | |
+| 7 | Security headers (CSP, HSTS), error log, API tests for every feature, domain steps, cut list | **Done** (run migration 006, add the domain: `docs/SETUP.md`) |
 
 ## Live vs demo
 

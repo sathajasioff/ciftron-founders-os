@@ -223,3 +223,63 @@ Up to 6 routines run per day. Each run costs one Claude call, plus one OpenAI em
 ## Optional Vercel env vars
 
 - `APP_ORIGIN`: extra browser origins allowed to call `/api/mcp`, comma separated. Terminal clients need nothing.
+
+# Phase 7 update (production)
+
+1. **Required:** in Supabase SQL Editor, run `supabase/migrations/20261122000006_error_log.sql`.
+2. Push is already deployed by Vercel. The new security headers apply on the next deploy automatically.
+
+## Custom domain: os.ciftron.com
+
+1. **Vercel:** open the `ciftron-founders-os-y3f4` project, then **Settings → Domains → Add**. Type `os.ciftron.com` and click **Add**.
+2. Vercel shows the DNS record to create, usually a **CNAME** with name `os`. Copy the exact value it shows.
+3. **Your DNS provider for ciftron.com** (wherever the domain is managed: GoDaddy, Namecheap, Cloudflare, Google, HighLevel): add that record.
+   - Type `CNAME`, Name/Host `os`, Value as Vercel showed, TTL automatic.
+   - On Cloudflare, set the record to **DNS only** (grey cloud) so Vercel can issue the certificate.
+4. Back in Vercel, wait until the domain shows **Valid Configuration**. This usually takes a few minutes, and can take up to a few hours.
+5. **Supabase → Authentication → URL Configuration:**
+   - **Site URL:** `https://os.ciftron.com`
+   - **Redirect URLs:** add `https://os.ciftron.com/**`. Keep the vercel.app one until you've signed in once on the new domain.
+   Without this, sign-in links still send you to the old address.
+6. Open `https://os.ciftron.com`, sign in with a new link, and check that everything loads.
+7. **Claude Code:** point MCP at the new address. Your token stays the same:
+   ```bash
+   claude mcp remove founders-os
+   claude mcp add --transport http founders-os https://os.ciftron.com/api/mcp --header "Authorization: Bearer YOUR_TOKEN" --scope user
+   ```
+
+Nothing in the code needs changing for the domain. The cron, MCP and sign-in use whatever address the app is served from.
+
+## Security headers (automatic)
+
+Every page and API response now sends:
+
+- **Content-Security-Policy:**
+  - Scripts only from the app itself, esm.sh (the Supabase client) and jsDelivr (the zip download in Graphics).
+  - No inline scripts and no eval.
+  - Data only to Supabase.
+  - The app can't be framed by other sites.
+- **Strict-Transport-Security** (HTTPS only, two years).
+- **Cross-Origin-Opener-Policy**, **X-Content-Type-Options**, **X-Frame-Options**, **Referrer-Policy**.
+- **Permissions-Policy:** microphone allowed for Jarvis only; camera, location and payment are blocked.
+
+If a future feature loads something from a new site, the browser blocks it and the UI tests fail until `vercel.json` is updated. That's intended.
+
+## Error log
+
+**Connections and Settings → Error log** shows the last 50 failures from:
+
+- server functions
+- MCP calls
+- routines
+- your browser
+
+Keys and tokens are removed before anything is saved. Entries older than 30 days are deleted by the daily cron, and **Clear** empties the log. Vercel's own logs (**Project → Logs**) show the same server errors with full timing.
+
+## Tests
+
+`npm run test:all` runs everything. `docs/TESTS.md` maps every feature to its tests.
+
+## Screens you could cut
+
+See `docs/CUT-LIST.md`. Nothing has been removed yet.

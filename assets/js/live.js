@@ -38,6 +38,24 @@ export async function api(path, { method = 'POST', body } = {}) {
   return j;
 }
 
+// Sends uncaught browser errors to the server error log (Settings > Error log).
+// At most 10 per page load, each distinct message once, and never recursive.
+const sent = new Set();
+let sending = false;
+export function reportError(err, extra = {}) {
+  if (!live.on || !live.session || sending || sent.size >= 10) return;
+  const message = String(err?.message || err || 'Unknown error').slice(0, 500);
+  if (sent.has(message) || /ResizeObserver loop/.test(message)) return;
+  sent.add(message);
+  sending = true;
+  api('account', { body: { action: 'log_error', message, route: location.hash || '#home', detail: { stack: String(err?.stack || '').slice(0, 3000), ...extra } } })
+    .catch(() => {}).finally(() => { sending = false; });
+}
+export function watchErrors() {
+  window.addEventListener('error', (e) => reportError(e.error || e.message, { file: e.filename, line: e.lineno, col: e.colno }));
+  window.addEventListener('unhandledrejection', (e) => reportError(e.reason));
+}
+
 // Supabase query helper that throws instead of returning { error }.
 export async function q(promise) {
   const { data, error } = await promise;

@@ -2,6 +2,7 @@
 // and the earlier initialize-handshake revisions, so older clients keep working.
 // Pure functions: no database or network here, which keeps the protocol easy to test.
 import { createHash, randomBytes } from 'node:crypto';
+import { redact } from './errors.js';
 
 export const MODERN_VERSIONS = ['2026-07-28'];
 export const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
@@ -79,7 +80,7 @@ const toolView = (t) => ({ name: t.name, title: t.title, description: t.descript
 
 // Handles one JSON-RPC message. tools: [{ name, title, description, inputSchema, annotations, run(args) }].
 // Returns { status, body } where body is null for an accepted notification.
-export async function handleMessage(msg, headers, { tools: toolsIn, authorize }) {
+export async function handleMessage(msg, headers, { tools: toolsIn, authorize, onError }) {
   if (Array.isArray(msg)) return { status: 400, body: rpcError(null, ERR.INVALID, 'Batch requests are not supported') };
   if (!msg || typeof msg !== 'object' || msg.jsonrpc !== '2.0' || typeof msg.method !== 'string') {
     return { status: 400, body: rpcError(msg?.id, ERR.INVALID, 'Invalid JSON-RPC request') };
@@ -126,7 +127,9 @@ export async function handleMessage(msg, headers, { tools: toolsIn, authorize })
         return done(toolResult(out, false));
       } catch (e) {
         // Tool failures are reported to the model so it can correct itself.
-        return done(toolResult({ error: e.expose === false ? 'Server error' : (e.message || 'Server error') }, true));
+        // Expected refusals (ToolError) are not logged; anything else is.
+        if (onError && e?.name !== 'ToolError') await onError(e, name);
+        return done(toolResult({ error: e.expose === false ? 'Server error' : redact(e.message || 'Server error') }, true));
       }
     }
     default:

@@ -1,11 +1,10 @@
 import { t, getLang, setLang } from './i18n.js';
 import { icon, $, esc } from './ui.js';
 import { approvals, owner } from './data.js';
-import { live, initLive, loginScreen, api } from './live.js';
+import { live, initLive, loginScreen, api, reportError, watchErrors } from './live.js';
 
 // Screens backed by real data once Supabase is configured. The rest stay demo until their phase.
 const LIVE_ROUTES = ['brain', 'connections', 'chat', 'team', 'approvals', 'pipeline', 'home', 'content', 'emails', 'funnels', 'graphics', 'vault', 'goals', 'programs'];
-const PHASE = {};
 
 const NAV = [
   ['nav.workspace', [['home', 'sparkle'], ['chat', 'chat'], ['team', 'team'], ['approvals', 'inbox']]],
@@ -75,7 +74,7 @@ export function paintChrome(current) {
   $('#theme-btn').innerHTML = icon(dark ? 'sun' : 'moon');
   $('#global-search').placeholder = t('top.search');
   const isLive = live.on && LIVE_ROUTES.includes(current);
-  $('#demo-pill').textContent = isLive ? 'Live' : live.on ? `${t('top.demo')} · Phase ${PHASE[current] || ''}` : t('top.demo');
+  $('#demo-pill').textContent = isLive ? 'Live' : t('top.demo');
   $('#demo-pill').style.cssText = isLive ? 'border-style:solid;border-color:var(--accent);color:var(--text)' : '';
   [...$('#lang-seg').children].forEach((b) => b.classList.toggle('active', b.dataset.lang === getLang()));
 }
@@ -94,6 +93,7 @@ async function route() {
     refreshPending().then(() => paintChrome(name)).catch(() => {});
   } catch (err) {
     console.error(err);
+    reportError(err, { screen: name });
     view.innerHTML = `<div class="empty"><h2>Something went wrong</h2><p class="mono">${esc(err.message)}</p></div>`;
   }
   view.focus({ preventScroll: true });
@@ -105,6 +105,7 @@ setLang(getLang());
 (async () => {
   await initLive();
   if (live.on && !live.session) return loginScreen($('#app'));
+  if (live.on) watchErrors();
   shell();
   window.addEventListener('hashchange', route);
   if (live.on) { try { await api('brain', { body: { action: 'bootstrap' } }); } catch (e) { console.error(e); } }
