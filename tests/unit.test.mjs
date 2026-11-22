@@ -95,3 +95,10 @@ test('compileDna uses only approved facts, starred first, and flags missing proo
   assert.ok(markdown.includes('No em dashes'));
   assert.ok(!markdown.includes('—'));
 });
+
+test('supabaseUrl cleans common paste mistakes', async () => {
+  const { supabaseUrl } = await import('../api/_lib/http.js');
+  for (const raw of ['https://abc123.supabase.co', 'https://abc123.supabase.co/', ' https://abc123.supabase.co/rest/v1/ ', 'https://supabase.com/dashboard/project/abc123/settings/api']) {
+    assert.equal(supabaseUrl(raw), 'https://abc123.supabase.co', raw);
+  }
+});

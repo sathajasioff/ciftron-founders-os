@@ -11,10 +11,19 @@ const env = (k) => {
   return v;
 };
 
-export const adminClient = () => createClient(env('SUPABASE_URL'), env('SUPABASE_SERVICE_ROLE_KEY'), { auth: { persistSession: false } });
+// Accepts https://ref.supabase.co with or without a trailing slash, /rest/v1 or other path.
+export function supabaseUrl(raw = process.env.SUPABASE_URL) {
+  if (!raw) throw new HttpError(500, 'Server is missing the SUPABASE_URL environment variable');
+  const s = raw.trim();
+  const ref = s.match(/supabase\.com\/dashboard\/project\/([a-z0-9]+)/i);
+  if (ref) return `https://${ref[1]}.supabase.co`;
+  try { return new URL(s).origin; } catch { throw new HttpError(500, 'SUPABASE_URL is not a valid URL'); }
+}
+
+export const adminClient = () => createClient(supabaseUrl(), env('SUPABASE_SERVICE_ROLE_KEY'), { auth: { persistSession: false } });
 
 // A Supabase client that acts as the signed-in user, so row level security applies.
-export const userClient = (token) => createClient(env('SUPABASE_URL'), env('SUPABASE_ANON_KEY'), {
+export const userClient = (token) => createClient(supabaseUrl(), env('SUPABASE_ANON_KEY'), {
   auth: { persistSession: false },
   global: { headers: { Authorization: `Bearer ${token}` } },
 });
