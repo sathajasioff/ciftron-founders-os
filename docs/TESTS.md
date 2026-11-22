@@ -56,6 +56,12 @@ Run everything with `npm run test:all`. The unit, database and API tests need no
 | Graphics: exact sizes, brand-aware prompts, approvals | studio "graphics"; e2e 22 |
 | Vault briefs, Programs | studio "programs and vault briefs"; e2e 23 |
 | Goals: measurable targets, live sync | studio "goals" ×2; api "studio: a goal"; e2e 23 |
+| **Content growth (Phase 8)** | |
+| My feed: Instagram, YouTube, Facebook, LinkedIn mapping; engagement scoring | studio "feed" ×2, "apify" ×2; api "feed" ×2; e2e 30b |
+| Apify cost tracking | studio "apify: a finished run returns posts and its cost"; api "feed: … records the run cost"; db "apify_runs"; e2e 30b |
+| Content funnel | studio "content funnel"; api "content funnel"; e2e 30, 30b |
+| Voice playbook: quoted proposals, approved pairs in every prompt | studio "playbook"; api "playbook"; db "voice_playbook"; e2e 31 |
+| Model picker: Claude, GPT, OpenRouter | api "model picker"; e2e 32 |
 | **MCP and routines** | |
 | MCP protocol (current and legacy clients, headers, versions, Origin) | mcp protocol tests ×10; api "mcp over HTTP"; checked against the official MCP SDK client |
 | Revocable read or read-write tokens, hashed | mcp "tokens"; api "account … MCP token", "mcp over HTTP"; db "mcp tables"; e2e 26 |

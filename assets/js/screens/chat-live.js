@@ -6,6 +6,9 @@ import { live, api, q } from '../live.js';
 const MAX_FILES = 8;
 const ACCEPT = 'image/png,image/jpeg,image/gif,image/webp,.pdf,.docx,.txt,.md,.csv,.html';
 const st = { threadId: null, room: false };
+// Model picker. OpenRouter models load once, only when a key is saved.
+const pickState = { model: (() => { try { return localStorage.getItem('os.chatModel') || 'claude'; } catch { return 'claude'; } })(), models: null };
+const modelLabel = (m) => (m === 'claude' ? 'Claude' : m === 'gpt' ? 'GPT' : (pickState.models || []).find((x) => 'or:' + x.id === m)?.name || m.slice(3));
 
 export async function render(el, ctx) {
   let threads = [], msgs = [], files = [], busy = false;
@@ -25,13 +28,28 @@ export async function render(el, ctx) {
             <div class="row between">
               <div class="row"><label class="btn btn-sm btn-ghost" ${busy ? 'aria-disabled="true"' : ''}>${icon('clip')} ${t('chat.attach')}<input type="file" id="files" multiple accept="${ACCEPT}" hidden></label>
                 <span class="xs muted">${files.length}/${MAX_FILES} files</span></div>
-              <div class="row"><span class="xs faint">${st.room ? 'Claude + GPT' : 'Claude'}</span><button class="btn btn-primary btn-sm" id="send" ${busy ? 'disabled' : ''}>${icon('send')} ${t('c.send')}</button></div>
+              <div class="row">${st.room ? '<span class="xs faint">Claude + GPT</span>' : `<select class="select" id="model" aria-label="Model" style="height:30px;padding:2px 8px;font-size:12px;max-width:220px">
+                <option value="claude" ${pickState.model === 'claude' ? 'selected' : ''}>Claude</option><option value="gpt" ${pickState.model === 'gpt' ? 'selected' : ''}>GPT (OpenAI)</option>
+                ${pickState.model.startsWith('or:') && !(pickState.models || []).some((x) => 'or:' + x.id === pickState.model) ? `<option value="${esc(pickState.model)}" selected>${esc(modelLabel(pickState.model))}</option>` : ''}
+                ${(pickState.models || []).length ? `<optgroup label="OpenRouter">${pickState.models.map((x) => `<option value="or:${esc(x.id)}" ${pickState.model === 'or:' + x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</optgroup>` : pickState.models === null ? '<option value="__load">More models (OpenRouter)...</option>' : ''}
+              </select>`}<button class="btn btn-primary btn-sm" id="send" ${busy ? 'disabled' : ''}>${icon('send')} ${t('c.send')}</button></div>
             </div>
           </div>
         </div>
       </div>`;
     const sc = $('#scroll', el); sc.scrollTop = sc.scrollHeight;
     $('#room-toggle', el).onchange = (e) => { st.room = e.target.checked; draw(); };
+    const ms = $('#model', el);
+    if (ms) ms.onchange = async () => {
+      if (ms.value === '__load') {
+        ms.disabled = true;
+        try { const r = await api('studio', { body: { action: 'chat_models' } }); pickState.models = r.models; if (!r.openrouter) toast('Add an OpenRouter key in Connections to use more models.'); }
+        catch (x) { toast(x.message); pickState.models = []; }
+        draw(); return;
+      }
+      pickState.model = ms.value;
+      try { localStorage.setItem('os.chatModel', ms.value); } catch { /* private mode */ }
+    };
     $('#newchat', el).onclick = () => { st.threadId = null; msgs = []; draw(); $('#prompt', el).focus(); };
     el.querySelectorAll('[data-th]').forEach((r) => r.onclick = async () => { st.threadId = r.dataset.th; st.room = !!threads.find((x) => x.id === st.threadId)?.strategy_room; await loadMsgs(); draw(); });
     $('#files', el).onchange = (e) => {
@@ -61,7 +79,7 @@ export async function render(el, ctx) {
         if (error) throw new Error(error.message);
         attachments.push({ path, name: f.name, mime: f.type });
       }
-      const r = await api('chat', { body: { thread_id: st.threadId, message, attachments, strategy_room: st.room } });
+      const r = await api('chat', { body: { thread_id: st.threadId, message, attachments, strategy_room: st.room, model: st.room ? 'claude' : pickState.model } });
       st.threadId = r.thread_id;
       if (r.drafts.length) { toast(`${r.drafts.length} draft${r.drafts.length > 1 ? 's' : ''} saved to Approvals`); ctx.refreshNav(); }
       r.warnings.filter((w) => !/No Brand DNA/.test(w)).forEach((w) => toast(w, { ms: 6000 }));
@@ -102,6 +120,6 @@ function msgHtml(m) {
   if (m.role === 'strategist' || m.role === 'challenger') return `<div class="msg"><div class="avatar ai">${m.role === 'strategist' ? 'S' : 'C'}</div><div class="grow"><div class="room"><div class="row between" style="margin-bottom:4px"><b>${m.role === 'strategist' ? 'Strategist' : 'Challenger'}</b><span class="xs faint">${esc(m.model || '')}</span></div><div class="small">${md(m.content)}</div></div>${m.role === 'strategist' ? sourcesHtml(m.sources) : ''}</div></div>`;
   if (m.role === 'verdict') return `<div class="msg"><div class="avatar ai">V</div><div class="grow"><div class="room verdict"><b>Verdict</b><div class="small" style="margin-top:4px">${md(m.content)}</div></div>
     <div class="row" style="margin-top:6px"><button class="btn btn-sm btn-ghost" data-save="${m.id}">${icon('inbox')} Save to Approvals</button></div></div></div>`;
-  return `<div class="msg"><div class="avatar ai">OS</div><div class="grow"><div class="bubble">${md(m.content)}</div>${sourcesHtml(m.sources)}
+  return `<div class="msg"><div class="avatar ai">OS</div><div class="grow"><div class="bubble">${md(m.content)}</div>${m.model ? `<div class="xs faint" style="margin:2px 0 0 4px">${esc(m.model)}</div>` : ''}${sourcesHtml(m.sources)}
     <div class="row" style="margin-top:6px"><button class="btn btn-sm btn-ghost" data-save="${m.id}">${icon('inbox')} Save to Approvals</button></div></div></div>`;
 }

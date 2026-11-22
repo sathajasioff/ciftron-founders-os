@@ -199,3 +199,15 @@ test('members work on the owner data; settings, keys and MCP stay with the owner
   await asService(`delete from workspace_members where member_id = $1`, [M]);
   assert.equal((await as(M, 'select * from brain_facts')).rows.length, 0);
 });
+
+test('voice_playbook and apify_runs: workspace-scoped, and playbook edits need the current version', async () => {
+  const { rows: [p] } = await as(A, `insert into voice_playbook (question, answer) values ('How fast?', 'Five minutes') returning id, version, owner_id, status`);
+  assert.deepEqual([p.owner_id, p.status, p.version], [A, 'proposed', 1]);
+  await assert.rejects(as(A, `update voice_playbook set answer = 'x', version = 1 where id = $1`, [p.id]), /version_conflict/);
+  await as(A, `update voice_playbook set status = 'approved', version = 2 where id = $1`, [p.id]);
+  assert.equal((await as(B, 'select * from voice_playbook')).rows.length, 0);
+  await as(A, `insert into apify_runs (platform, actor, status, cost_usd, items, outliers) values ('Instagram', 'apify~instagram-post-scraper', 'SUCCEEDED', 0.0123, 24, 3)`);
+  assert.equal(Number((await as(A, 'select cost_usd from apify_runs')).rows[0].cost_usd), 0.0123);
+  assert.equal((await as(B, 'select * from apify_runs')).rows.length, 0);
+  await assert.rejects(as(A, `insert into content_items (title, format, funnel_stage) values ('x', 'Idea', 'nope')`), /check/);
+});

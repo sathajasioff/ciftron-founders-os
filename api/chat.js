@@ -1,13 +1,13 @@
 // AI Chat and AI Team. Every message loads Brand DNA and searches the Brain.
 // Finished deliverables are saved to Approvals; nothing is published or sent.
 import { handler, requireOwner, HttpError } from './_lib/http.js';
-import { getSecret, embed, claude, gpt, OPENAI_MODEL, ANTHROPIC_MODEL } from './_lib/providers.js';
+import { getSecret, embed, claude, gpt, openrouter, OPENAI_MODEL, ANTHROPIC_MODEL } from './_lib/providers.js';
 import { extractText } from './_lib/brain.js';
 import {
   systemPrompt, CHALLENGER_SYSTEM, VERDICT_SYSTEM, cleanCopy, extractDrafts, extractHandoff, linkDrafts, threadTitle, ACTIVE_AGENTS, CONTEXT_AGENTS,
 } from './_lib/chat.js';
 import { businessContext } from './_lib/context.js';
-import { signalsBlock } from './_lib/studio.js';
+import { signalsBlock, playbookBlock } from './_lib/studio.js';
 
 const CONTENT_AGENTS = ['content-strategist', 'copywriter', 'designer', 'researcher'];
 
@@ -25,15 +25,19 @@ export default handler(['POST'], async (req, body) => {
   if (attachments.length > MAX_ATTACH) throw new HttpError(400, `Up to ${MAX_ATTACH} files per message`);
   if (attachments.some((a) => !String(a.path || '').startsWith(`${user.id}/chat/`))) throw new HttpError(400, 'Invalid attachment');
 
-  const anthropicKey = await getSecret(admin, user.id, 'anthropic', 'api_key');
+  // Model picker: 'claude' (default), 'gpt', or 'or:<openrouter model id>'. Strategy Room always uses its own pair.
+  const pick = String(body.model || 'claude');
+  if (!/^(claude|gpt|or:[A-Za-z0-9._:/~-]{3,120})$/.test(pick)) throw new HttpError(400, 'Unknown model');
+  const anthropicKey = pick === 'claude' || body.mode === 'jarvis' || body.strategy_room ? await getSecret(admin, user.id, 'anthropic', 'api_key') : null;
   const warnings = [];
+  const playbook = playbookBlock(await db.from('voice_playbook').select('question, answer').eq('status', 'approved').order('updated_at', { ascending: false }).limit(12).then((r) => r.data || [], () => []));
 
   // Jarvis: short spoken answers from live context. Nothing is stored as a transcript.
   if (body.mode === 'jarvis') {
     const [ctx, dnaRow] = await Promise.all([businessContext(db, admin, user.id), one(db.from('brand_dna').select('markdown').eq('is_active', true).maybeSingle())]);
     const history = (Array.isArray(body.history) ? body.history.slice(-8) : []).map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '').slice(0, 2000) })).filter((m) => m.content);
     while (history.length && history[0].role !== 'user') history.shift();
-    const reply = await claude(anthropicKey, { system: systemPrompt({ dna: dnaRow?.markdown, mode: 'jarvis', context: ctx.text }), messages: [...history, { role: 'user', content: message }], maxTokens: 400 });
+    const reply = await claude(anthropicKey, { system: systemPrompt({ dna: dnaRow?.markdown, mode: 'jarvis', context: ctx.text, playbook }), messages: [...history, { role: 'user', content: message }], maxTokens: 400 });
     return { reply: cleanCopy(reply).replace(/[*#`_]/g, '').trim() };
   }
 
@@ -130,11 +134,20 @@ export default handler(['POST'], async (req, body) => {
     const verdict = cleanCopy(await claude(anthropicKey, { system: VERDICT_SYSTEM, prompt: `${roomPrompt}\n\nChallenger's critique:\n${challenger}`, maxTokens: 700 }));
     await say('verdict', verdict, { model: ANTHROPIC_MODEL });
   } else {
-    const raw = await claude(anthropicKey, { system: systemPrompt({ dna: dnaRow?.markdown, agent, brainHits, warnings, context: liveCtx, signals: sig }), messages, maxTokens: 3000 });
+    const sysText = systemPrompt({ dna: dnaRow?.markdown, agent, brainHits, warnings, context: liveCtx, signals: sig, playbook });
+    let raw, usedModel = ANTHROPIC_MODEL;
+    if (pick === 'claude') raw = await claude(anthropicKey, { system: sysText, messages, maxTokens: 3000 });
+    else {
+      // Other models get text only; images stay with Claude.
+      if (blocks.some((b) => b.type === 'image')) warnings.push('Images were only read by Claude. Switch to Claude to discuss images.');
+      const textMsgs = messages.map((m) => ({ role: m.role, content: typeof m.content === 'string' ? m.content : m.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n\n') }));
+      if (pick === 'gpt') { raw = await gpt(await getSecret(admin, user.id, 'openai', 'api_key'), { system: sysText, messages: textMsgs, maxTokens: 3000 }); usedModel = OPENAI_MODEL; }
+      else { usedModel = pick.slice(3); raw = await openrouter(await getSecret(admin, user.id, 'openrouter', 'api_key'), { model: usedModel, system: sysText, messages: textMsgs, maxTokens: 3000 }); }
+    }
     let { handoff, reply } = agent?.slug === 'chief-of-staff' ? extractHandoff(raw) : { handoff: null, reply: raw };
     const { drafts, reply: r2 } = extractDrafts(reply);
     const saved = await saveDrafts(drafts, agent?.name || 'AI Chat');
-    await say('assistant', cleanCopy(linkDrafts(r2, saved)), { model: ANTHROPIC_MODEL, sources });
+    await say('assistant', cleanCopy(linkDrafts(r2, saved)), { model: usedModel, sources });
 
     // Chief of Staff hands work to the Content Strategist, in that agent's own thread.
     if (handoff && ACTIVE_AGENTS.includes(handoff.to) && handoff.to !== 'chief-of-staff') {
@@ -145,7 +158,7 @@ export default handler(['POST'], async (req, body) => {
         let specThread = await one(db.from('threads').select('*').eq('agent_id', spec.id).order('updated_at', { ascending: false }).limit(1).maybeSingle());
         if (!specThread) specThread = await one(db.from('threads').insert({ owner_id: user.id, agent_id: spec.id, title: threadTitle(handoff.task) }).select().single());
         await one(db.from('messages').insert({ owner_id: user.id, thread_id: specThread.id, role: 'user', content: `From Chief of Staff: ${handoff.task}` }));
-        const specRaw = await claude(anthropicKey, { system: systemPrompt({ dna: dnaRow?.markdown, agent: spec, brainHits, warnings }), prompt: handoff.task, maxTokens: 3000 });
+        const specRaw = await claude(anthropicKey || await getSecret(admin, user.id, 'anthropic', 'api_key'), { system: systemPrompt({ dna: dnaRow?.markdown, agent: spec, brainHits, warnings, playbook }), prompt: handoff.task, maxTokens: 3000 });
         const sd = extractDrafts(specRaw);
         const specSaved = await saveDrafts(sd.drafts, spec.name);
         await one(db.from('messages').insert({ owner_id: user.id, thread_id: specThread.id, role: 'assistant', content: cleanCopy(linkDrafts(sd.reply, specSaved)), sources, model: ANTHROPIC_MODEL }));

@@ -89,13 +89,25 @@ export async function claude(apiKey, { system, prompt, messages, maxTokens = 400
   return j.content.filter((c) => c.type === 'text').map((c) => c.text).join('');
 }
 
-export async function gpt(apiKey, { system, prompt, maxTokens = 1200 }) {
+export async function gpt(apiKey, { system, prompt, messages, maxTokens = 1200 }) {
   const r = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: OPENAI_MODEL, max_completion_tokens: maxTokens, messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }] }),
+    body: JSON.stringify({ model: OPENAI_MODEL, max_completion_tokens: maxTokens, messages: [{ role: 'system', content: system }, ...(messages || [{ role: 'user', content: prompt }])] }),
   });
   if (!r.ok) throw await providerError('OpenAI', r);
+  const j = await r.json();
+  return j.choices?.[0]?.message?.content || '';
+}
+
+// OpenRouter: one key, many models. Same message shape as OpenAI chat completions.
+export async function openrouter(apiKey, { model, system, messages, maxTokens = 3000 }) {
+  const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'X-Title': 'Founders AI OS' },
+    body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'system', content: system }, ...messages] }),
+  });
+  if (!r.ok) throw await providerError('OpenRouter', r);
   const j = await r.json();
   return j.choices?.[0]?.message?.content || '';
 }

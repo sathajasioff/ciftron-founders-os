@@ -7,7 +7,8 @@ import { hlBoard, metaNow } from './_lib/context.js';
 import {
   EMAIL_SYSTEM, emailPrompt, validateSequence, REWRITE_SYSTEM, FUNNEL_SYSTEM, funnelPrompt, validateFunnel, GOAL_SYSTEM, goalPrompt, validateGoal, goalValue,
   PROGRAM_SYSTEM, validateProgram, programText, VAULT_SYSTEM, validateBrief, briefText, graphicPrompt, aspectFor, scorePosts, mapInstagram, mapYouTube,
-  computeSignals, signalsBlock, SEQUENCE_TYPES,
+  computeSignals, signalsBlock, SEQUENCE_TYPES, apifyPlan, apifyRun, FUNNEL_STAGES, CONTENT_FUNNEL_SYSTEM, contentFunnelPrompt, validateContentFunnel, ideaBody,
+  PLAYBOOK_SYSTEM, playbookPrompt, validatePlaybook,
 } from './_lib/studio.js';
 import { runRoutine } from './_lib/routines.js';
 
@@ -166,15 +167,19 @@ No forced sales pitch.`;
   if (a === 'research_fetch') {
     const c = await one(db.from('research_creators').select('*').eq('id', body.creator_id).single());
     let posts = [];
+    const plan = apifyPlan(c.platform, c);
+    const logRun = (row) => db.from('apify_runs').insert({ owner_id: user.id, creator_id: c.id, platform: c.platform, actor: plan.actor, ...row }).then(() => {}, () => {});
     try {
-      if (c.platform === 'Instagram') {
+      if (plan) {
         const token = await getSecret(admin, user.id, 'apify', 'api_token');
-        const r = await fetch('https://api.apify.com/v2/acts/apify~instagram-post-scraper/run-sync-get-dataset-items?timeout=50', {
-          method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: [c.handle.replace(/^@/, '')], resultsLimit: 24 }), signal: AbortSignal.timeout(55000),
-        });
-        if (!r.ok) throw new HttpError(502, `Apify returned ${r.status}: ${(await r.text()).slice(0, 150)}`);
-        posts = (await r.json()).map(mapInstagram).filter((p) => p.external_id);
+        try {
+          const run = await apifyRun(token, plan);
+          posts = run.posts;
+          var runInfo = { run_id: run.runId, status: run.status, cost_usd: run.cost };
+        } catch (e) {
+          if (e.run) await logRun({ run_id: e.run.id, status: e.run.status, cost_usd: e.run.cost });
+          throw e.status ? new HttpError(e.status, e.message) : e;
+        }
       } else if (c.platform === 'YouTube') {
         const key = await getSecret(admin, user.id, 'youtube', 'api_key');
         const yt = async (path) => { const r = await fetch(`https://www.googleapis.com/youtube/v3/${path}&key=${encodeURIComponent(key)}`); const j = await r.json(); if (!r.ok) throw new HttpError(502, `YouTube: ${j.error?.message || r.status}`); return j; };
@@ -184,15 +189,68 @@ No forced sales pitch.`;
         const pl = await yt(`playlistItems?part=contentDetails&maxResults=30&playlistId=${uploads}`);
         const ids = pl.items.map((i) => i.contentDetails.videoId).join(',');
         posts = ids ? (await yt(`videos?part=snippet,statistics&id=${ids}`)).items.map(mapYouTube) : [];
-      } else throw new HttpError(400, 'Supported platforms: Instagram, YouTube');
+      } else throw new HttpError(400, 'Supported platforms: Instagram, YouTube, Facebook, LinkedIn');
     } catch (e) {
       await db.from('research_creators').update({ fetch_error: String(e.message).slice(0, 300), last_fetched_at: new Date().toISOString() }).eq('id', c.id);
       throw e;
     }
     const scored = scorePosts(posts);
+    const outliers = scored.posts.filter((p) => p.outlier_score >= 2).length;
+    if (plan) await logRun({ ...runInfo, items: posts.length, outliers });
     if (scored.posts.length) await one(db.from('research_posts').upsert(scored.posts.map((p) => ({ owner_id: user.id, creator_id: c.id, ...p, fetched_at: new Date().toISOString() })), { onConflict: 'owner_id,creator_id,external_id' }));
     await one(db.from('research_creators').update({ median_views: scored.median, last_fetched_at: new Date().toISOString(), fetch_error: null }).eq('id', c.id));
-    return { posts: scored.posts.length, median: scored.median };
+    return { posts: scored.posts.length, median: scored.median, metric: scored.metric, outliers, cost: runInfo?.cost_usd ?? null };
+  }
+
+  // Content funnel: ideas for each stage that lead to one offer or lead magnet. Each idea is a draft in Approvals.
+  if (a === 'content_funnel') {
+    let target = String(body.target || '').trim().slice(0, 500);
+    if (body.offer_id) {
+      const o = await one(db.from('offers').select('name, price, currency, cadence, services').eq('id', body.offer_id).single());
+      target = `Offer "${o.name}"${o.price != null ? ` at ${o.price} ${o.currency} per ${o.cadence}` : ''}. Services: ${(o.services || []).join(', ')}`;
+    }
+    if (!target) throw new HttpError(400, 'Pick an offer or describe the lead magnet');
+    const clamp = (n) => Math.max(0, Math.min(8, Math.round(+n || 0)));
+    const counts = { tofu: clamp(body.counts?.tofu ?? 4), mofu: clamp(body.counts?.mofu ?? 3), bofu: clamp(body.counts?.bofu ?? 2) };
+    if (!counts.tofu && !counts.mofu && !counts.bofu) throw new HttpError(400, 'Ask for at least one idea');
+    const sys = (await withDna(CONTENT_FUNNEL_SYSTEM)) + '\n\n' + signalsBlock(await signals());
+    const plan = validateContentFunnel(parseJson(await ask(sys, contentFunnelPrompt({ target, counts, language: body.language, notes: String(body.notes || '').slice(0, 1000) }), 4000)), counts);
+    const label = body.offer_id ? target.split('"')[1] : target.slice(0, 60);
+    let made = 0;
+    for (const [stage, ideas] of Object.entries(plan)) {
+      for (const x of ideas) {
+        await approval({ type: 'Idea', title: x.title, payload: { body: ideaBody(x, stage), funnel_stage: stage, funnel_target: label, format: x.format, hook: x.hook },
+          tags: [stage, 'content funnel'], language: body.language === 'fr-qc' ? 'fr-qc' : 'en', source_agent: 'Content Strategist', target_module: 'content' });
+        made++;
+      }
+    }
+    return { drafts: made, by_stage: Object.fromEntries(Object.entries(plan).map(([k, v]) => [k, v.length])) };
+  }
+
+  // Voice playbook: question and answer pairs drawn from the owner's own material, each backed by a quote.
+  if (a === 'playbook_propose') {
+    const sources = await one(db.from('brain_sources').select('name, content').eq('status', 'ready').order('created_at', { ascending: false }).limit(20));
+    let material = '';
+    for (const s2 of sources) { if (material.length > 30000) break; if (s2.content) material += `\n\n## ${s2.name}\n${String(s2.content).slice(0, 8000)}`; }
+    const facts = await one(db.from('brain_facts').select('text').eq('status', 'approved').limit(80));
+    material += facts.length ? `\n\n## Approved facts\n${facts.map((f) => '- ' + f.text).join('\n')}` : '';
+    if (material.trim().length < 200) throw new HttpError(400, 'Add more to the Brain first: past posts, sales-call notes or FAQs.');
+    const existing = (await one(db.from('voice_playbook').select('question').neq('status', 'rejected'))).map((r) => r.question);
+    const pairs = validatePlaybook(parseJson(await ask(PLAYBOOK_SYSTEM, playbookPrompt({ material, existing, count: Math.min(+body.count || 8, 12), language: body.language }), 4000)), material, existing);
+    if (pairs.length) await one(db.from('voice_playbook').insert(pairs.map((p) => ({ owner_id: user.id, question: p.question, answer: p.answer, source_quote: p.quote, status: 'proposed', authored_by: 'ai' }))));
+    return { proposed: pairs.length };
+  }
+
+  // Text models available through OpenRouter, for the model picker in AI Chat.
+  if (a === 'chat_models') {
+    let key = null;
+    try { key = await getSecret(admin, user.id, 'openrouter', 'api_key'); } catch { return { models: [], openrouter: false }; }
+    const r = await fetch('https://openrouter.ai/api/v1/models', { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(15000) });
+    if (!r.ok) throw new HttpError(502, `OpenRouter returned ${r.status}`);
+    const list = (await r.json()).data || [];
+    const models = list.filter((m) => (m.architecture?.output_modalities || ['text']).includes('text') && !(m.architecture?.output_modalities || []).includes('image'))
+      .map((m) => ({ id: m.id, name: m.name || m.id, context: m.context_length || null })).sort((x, y) => x.name.localeCompare(y.name)).slice(0, 400);
+    return { models, openrouter: true };
   }
 
   if (a === 'learning_refresh') {

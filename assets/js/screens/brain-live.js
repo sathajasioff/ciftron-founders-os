@@ -18,14 +18,15 @@ function fail(e) {
 export async function render(el) {
   let S = {};
   const load = async () => {
-    const [facts, sources, styles, dna, offers] = await Promise.all([
+    const [facts, sources, styles, dna, offers, playbook] = await Promise.all([
       q(live.sb.from('brain_facts').select('*, brain_sources(name)').order('created_at', { ascending: false })),
       q(live.sb.from('brain_sources').select('id, kind, name, mime, storage_path, url, is_writing_sample, status, error, text_length, chunk_count, facts_proposed_at, created_at').order('created_at', { ascending: false })),
       q(live.sb.from('style_guides').select('*').order('version_no', { ascending: false })),
       q(live.sb.from('brand_dna').select('id, version_no, markdown, content, is_active, created_at').order('version_no', { ascending: false })),
       q(live.sb.from('offers').select('*').order('sort')),
+      q(live.sb.from('voice_playbook').select('*').order('created_at', { ascending: false })).catch(() => []),
     ]);
-    S = { facts, sources, styles, dna, offers, active: dna.find((d) => d.is_active) };
+    S = { facts, sources, styles, dna, offers, playbook, active: dna.find((d) => d.is_active) };
   };
 
   const stale = () => {
@@ -41,12 +42,12 @@ export async function render(el) {
     el.innerHTML = `
       ${head(t('brain.title'), t('brain.sub'), `<button class="btn btn-primary" id="up">${icon('upload')} ${t('brain.upload')}</button>`)}
       ${stale() ? `<div class="notice warn" style="margin-bottom:14px">${icon('alert')}<span class="grow">Brand DNA is out of date with your approved facts, offers or style guide.</span><button class="btn btn-sm" id="compile-top">Compile now</button></div>` : ''}
-      ${tabsHtml([['facts', `${t('brain.facts')}${proposed ? ` (${proposed} to review)` : ''}`], ['sources', `${t('brain.sources')} (${S.sources.length})`], ['style', t('brain.style')], ['dna', t('brain.dna')], ['search', t('c.search')]], ui.tab)}
+      ${tabsHtml([['facts', `${t('brain.facts')}${proposed ? ` (${proposed} to review)` : ''}`], ['sources', `${t('brain.sources')} (${S.sources.length})`], ['style', t('brain.style')], ['playbook', `Playbook${S.playbook.filter((p) => p.status === 'proposed').length ? ` (${S.playbook.filter((p) => p.status === 'proposed').length} to review)` : ''}`], ['dna', t('brain.dna')], ['search', t('c.search')]], ui.tab)}
       <div id="bpane"></div>`;
     el.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { ui.tab = b.dataset.tab; draw(); });
     $('#up', el).onclick = upload;
     const ct = $('#compile-top', el); if (ct) ct.onclick = compile;
-    ({ facts: factsPane, sources: sourcesPane, style: stylePane, dna: dnaPane, search: searchPane })[ui.tab]($('#bpane', el));
+    ({ facts: factsPane, sources: sourcesPane, style: stylePane, playbook: playbookPane, dna: dnaPane, search: searchPane })[ui.tab]($('#bpane', el));
   };
   const refresh = async () => { await load(); draw(); };
 
@@ -202,6 +203,51 @@ export async function render(el) {
   }
 
   // ---------- Style guide ----------
+  // Voice playbook: how you answer common questions. Approved pairs shape every draft, chat and routine.
+  function playbookPane(pane) {
+    const by = (st) => S.playbook.filter((p) => p.status === st);
+    const row = (p) => `<div class="card" style="margin-bottom:10px"><div class="row between top"><div class="grow"><div style="font-weight:600">${esc(p.question)}</div>
+        <p class="small" style="margin:6px 0 0;white-space:pre-wrap">${esc(p.answer)}</p>
+        ${p.source_quote ? `<div class="xs muted" style="margin-top:6px">From your material: "${esc(p.source_quote.slice(0, 160))}"</div>` : ''}</div>
+        ${p.authored_by === 'me' ? '<span class="chip accent">Your words</span>' : ''}</div>
+      <div class="row" style="margin-top:8px">${p.status !== 'approved' ? `<button class="btn btn-sm btn-primary" data-pb="${p.id}" data-to="approved">Approve</button>` : ''}
+        <button class="btn btn-sm" data-pbedit="${p.id}">${t('c.edit')}</button>
+        ${p.status !== 'rejected' ? `<button class="btn btn-sm btn-ghost" data-pb="${p.id}" data-to="rejected">${p.status === 'approved' ? 'Remove' : 'Reject'}</button>` : ''}</div></div>`;
+    pane.innerHTML = `<div class="row between wrap" style="margin-bottom:12px"><p class="small muted" style="margin:0;max-width:720px">Questions your audience and clients ask, answered the way you answer them. Approved answers guide every chat, agent and routine, so drafts take your positions and sound like you.</p>
+      <div class="row"><button class="btn btn-sm" id="pbadd">${icon('plus')} Add my own</button><button class="btn btn-sm btn-primary" id="pbgo">${icon('sparkle')} Suggest from my Brain</button></div></div>
+      ${by('proposed').length ? `<h3 style="margin:8px 0">To review (${by('proposed').length})</h3>${by('proposed').map(row).join('')}` : ''}
+      <h3 style="margin:14px 0 8px">Approved (${by('approved').length})</h3>${by('approved').map(row).join('') || '<div class="empty card soft">Nothing approved yet. Suggest pairs from your Brain, or add your own answers.</div>'}`;
+    pane.querySelectorAll('[data-pb]').forEach((b) => b.onclick = async () => {
+      const p = S.playbook.find((x) => x.id === b.dataset.pb);
+      try { const r = await versionedUpdate('voice_playbook', p, { status: b.dataset.to }); if (r.conflict) toast('Changed elsewhere. Reloaded.'); else toast(b.dataset.to === 'approved' ? 'Approved' : 'Removed'); } catch (e) { fail(e); }
+      refresh();
+    });
+    pane.querySelectorAll('[data-pbedit]').forEach((b) => b.onclick = () => editPair(S.playbook.find((x) => x.id === b.dataset.pbedit)));
+    $('#pbadd', pane).onclick = () => editPair(null);
+    $('#pbgo', pane).onclick = async (ev) => {
+      const b = ev.currentTarget; b.disabled = true; b.textContent = 'Reading your Brain...';
+      try { const r = await api('studio', { body: { action: 'playbook_propose' } }); toast(r.proposed ? `${r.proposed} pairs to review` : 'No new pairs found. Add more sales-call notes or FAQs to the Brain.'); }
+      catch (e) { toast(e.message, { ms: 7000 }); }
+      refresh();
+    };
+  }
+
+  function editPair(p) {
+    modal({ title: p ? 'Edit answer' : 'Add a question and your answer', sub: 'Saved as your words. AI will not overwrite them.', wide: true,
+      body: `<div class="stack"><div class="field"><label>Question</label><input class="input" id="pq" value="${esc(p?.question || '')}" placeholder="Example: Why not just boost posts instead of running ads?"></div>
+        <div class="field"><label>Your answer</label><textarea class="textarea" id="pa" style="min-height:160px">${esc(p?.answer || '')}</textarea></div></div>`,
+      foot: `<button class="btn" data-close>${t('c.cancel')}</button><button class="btn btn-primary" data-ok>${t('c.save')}</button>`,
+      onMount: (ov, close) => { ov.querySelector('[data-ok]').onclick = async () => {
+        const question = ov.querySelector('#pq').value.trim(), answer = ov.querySelector('#pa').value.trim();
+        if (!question || !answer) return toast('Fill in both');
+        try {
+          if (p) { const r = await versionedUpdate('voice_playbook', p, { question, answer, authored_by: 'me', status: 'approved' }); if (r.conflict) toast('Changed elsewhere. Your edit was not saved.'); }
+          else await q(live.sb.from('voice_playbook').insert({ owner_id: live.ownerId, question, answer, status: 'approved', authored_by: 'me' }));
+          close(); refresh();
+        } catch (e) { fail(e); }
+      }; } });
+  }
+
   function stylePane(pane) {
     const g = S.styles[0];
     const samples = S.sources.filter((s) => s.is_writing_sample);

@@ -84,6 +84,12 @@ export function buildTools({ admin, ownerId, token }) {
       },
     },
     {
+      name: 'list_playbook', title: 'Voice playbook', annotations: READ,
+      description: 'Questions the audience asks, answered the way the owner answers them. Match these positions and this voice.',
+      inputSchema: obj({ status: { type: 'string', enum: ['proposed', 'approved', 'rejected'] } }),
+      run: async ({ status = 'approved' }) => ({ pairs: await one(sel('voice_playbook', 'id, question, answer, status, authored_by, version').eq('status', status).order('updated_at', { ascending: false }).limit(100)) }),
+    },
+    {
       name: 'list_offers', title: 'Offers', annotations: READ,
       description: 'The founder\'s offers with real prices. Never invent prices; use these.',
       inputSchema: obj(),

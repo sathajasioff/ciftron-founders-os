@@ -56,7 +56,8 @@ export async function render(el, ctx) {
         let card = null;
         if (a.target_module === 'content') {
           const body = a.payload?.body || '';
-          card = (await q(live.sb.from('content_items').insert({ owner_id: live.ownerId, title: a.title, format: FORMAT[a.type] || a.type, language: a.language, stage: 'Idea', hook: body.split('\n').find((l) => l.trim())?.replace(/^\s*\d+[.)]\s*/, '').slice(0, 200) || null, notes: body, approval_id: a.id, authored_by: a.authored_by }).select('id')))[0];
+          const fs = ['tofu', 'mofu', 'bofu'].includes(a.payload?.funnel_stage) ? a.payload.funnel_stage : null;
+          card = (await q(live.sb.from('content_items').insert({ owner_id: live.ownerId, title: a.title, format: a.payload?.format || FORMAT[a.type] || a.type, language: a.language, stage: 'Idea', ...(fs ? { funnel_stage: fs } : {}), hook: a.payload?.hook || body.split('\n').find((l) => l.trim())?.replace(/^\s*\d+[.)]\s*/, '').slice(0, 200) || null, notes: body, approval_id: a.id, authored_by: a.authored_by }).select('id')))[0];
         }
         let undoModule = null;
         if (a.target_module === 'emails' && a.payload?.sequence_id) {

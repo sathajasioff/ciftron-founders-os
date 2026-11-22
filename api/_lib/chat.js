@@ -49,7 +49,7 @@ export const JARVIS_SYSTEM = `You are Jarvis, the owner's voice assistant inside
 - You can read; you cannot change anything. For changes, tell the owner which screen to open (Pipeline, Approvals, Content, Goals).
 - Never read out contact details or conversations.`;
 
-export function systemPrompt({ dna, agent, brainHits = [], mode = 'chat', warnings = [], context = '', signals = '' }) {
+export function systemPrompt({ dna, agent, brainHits = [], mode = 'chat', warnings = [], context = '', signals = '', playbook = '' }) {
   const parts = [];
   if (mode === 'jarvis') parts.push(JARVIS_SYSTEM);
   else parts.push(`You work inside the Founders AI OS, a private AI workspace for one business owner. HighLevel is their CRM and system of record. You draft; you never publish, send messages or change HighLevel.`);
@@ -57,6 +57,7 @@ export function systemPrompt({ dna, agent, brainHits = [], mode = 'chat', warnin
   parts.push(dna
     ? `# Brand DNA (approved facts; these beat anything else)\n${dna}`
     : `# Brand DNA\nNot compiled yet. Do not assume facts about the business beyond what the owner says in this chat. Say so if it matters.`);
+  if (playbook) parts.push(playbook);
   if (brainHits.length) {
     parts.push(`# Retrieved from the owner's Brain (may be outdated; Brand DNA wins on conflict)\n` + brainHits.map((h, i) => `[B${i + 1}] ${h.source_name}:\n${h.content.slice(0, 1500)}`).join('\n\n'));
   }

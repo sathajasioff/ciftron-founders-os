@@ -1,6 +1,6 @@
 // Minimal in-browser stand-in for @supabase/supabase-js, used only by tests/live_e2e.py.
 // Supports the query shapes the app uses and mimics the version_conflict trigger.
-const VERSIONED = ['offers', 'brain_facts', 'approvals', 'agents', 'content_items', 'email_sequences', 'funnels', 'programs', 'goals'];
+const VERSIONED = ['offers', 'brain_facts', 'approvals', 'agents', 'content_items', 'email_sequences', 'funnels', 'programs', 'goals', 'voice_playbook'];
 const now = () => new Date().toISOString();
 const uid = () => crypto.randomUUID();
 const OWNER = '11111111-1111-1111-1111-111111111111';
@@ -29,8 +29,15 @@ const db = (window.__FAKE_DB__ ||= {
   threads: [],
   messages: [],
   content_items: [{ id: 'ci1', owner_id: OWNER, title: 'Follow-up speed Reel', format: 'Short video', stage: 'Idea', publish_date: '2026-11-24', hook: 'Your follow-up is slow', notes: '', tasks: { script: false, film: false, edit: false, thumbnail: false, upload: false }, language: 'en', authored_by: 'ai', version: 1, created_at: old, updated_at: old }],
-  research_creators: [{ id: 'rc1', owner_id: OWNER, platform: 'Instagram', handle: '@sample.coach', is_mine: false, median_views: 1800, created_at: old }],
-  research_posts: [{ id: 'rp1', owner_id: OWNER, creator_id: 'rc1', external_id: 'x', title: 'The 3 texts I send every new lead', format: 'Reel', views: 21400, outlier_score: 11.89, created_at: old, research_creators: { handle: '@sample.coach', platform: 'Instagram' } }],
+  research_creators: [{ id: 'rc1', owner_id: OWNER, platform: 'Instagram', handle: '@sample.coach', is_mine: false, median_views: 1800, created_at: old },
+    { id: 'rc2', owner_id: OWNER, platform: 'Instagram', handle: '@ciftron', is_mine: true, median_views: 1700, created_at: old },
+    { id: 'rc3', owner_id: OWNER, platform: 'LinkedIn', handle: '@jasinthan', profile_url: 'https://www.linkedin.com/in/jasinthan', is_mine: true, median_views: 70, created_at: old }],
+  apify_runs: [{ id: 'ar1', owner_id: OWNER, platform: 'Instagram', actor: 'apify~instagram-post-scraper', status: 'SUCCEEDED', cost_usd: 0.4, items: 24, outliers: 4, created_at: new Date().toISOString() }],
+  voice_playbook: [{ id: 'vp1', owner_id: OWNER, question: 'How fast should a broker call a new lead?', answer: 'Within five minutes. After that the lead has usually moved on.', status: 'proposed', source_quote: 'I call within five minutes', authored_by: 'ai', version: 1, created_at: old, updated_at: old }],
+  research_posts: [
+    { id: 'mp1', owner_id: OWNER, creator_id: 'rc2', external_id: 'm1', title: 'My Reel about follow-up speed', format: 'Reel', views: 5200, likes: 310, comments: 41, outlier_score: 3.1, thumbnail_url: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=', posted_at: '2026-11-20T10:00:00Z', created_at: old, research_creators: { handle: '@ciftron', platform: 'Instagram', is_mine: true } },
+    { id: 'mp2', owner_id: OWNER, creator_id: 'rc3', external_id: 'm2', title: 'LinkedIn post on CRM leaks', format: 'Post', likes: 44, comments: 6, shares: 2, engagement: 62, outlier_score: 0.9, posted_at: '2026-11-18T10:00:00Z', created_at: old, research_creators: { handle: '@jasinthan', platform: 'LinkedIn', is_mine: true } },
+    { id: 'rp1', owner_id: OWNER, creator_id: 'rc1', external_id: 'x', title: 'The 3 texts I send every new lead', format: 'Reel', views: 21400, outlier_score: 11.89, created_at: old, research_creators: { handle: '@sample.coach', platform: 'Instagram' } }],
   learning_signals: [{ id: 'ls1', owner_id: OWNER, key: 'type_up:Hooks', signal: 'You approve most Hooks drafts (4 of 5).', evidence: '5 decisions', weight: 'medium', state: 'on', updated_at: old }],
   email_sequences: [{ id: 'es1', owner_id: OWNER, name: 'Call reminders', sequence_type: 'reminder', language: 'en', status: 'draft', emails: [{ day: 'Immediately', subject: 'Your call is booked', preview: 'p', body: 'Hi NAME' }], version: 1, created_at: old, updated_at: old }],
   funnels: [{ id: 'fn1', owner_id: OWNER, name: 'Meta Ads review call', funnel_type: 'Appointment booking funnel', offer_id: 'o1', brief: { audience: 'Brokers' }, order_form_url: 'https://link.example/book', current_version: 1, status: 'draft', version: 1, created_at: old, updated_at: old }],
@@ -45,6 +52,7 @@ const db = (window.__FAKE_DB__ ||= {
   mcp_edit_log: [{ id: 7, owner_id: OWNER, token_id: 'mt1', action: 'update', tool: 'update_goal', table_name: 'goals', row_id: 'g9', previous_value: { current_value: 2 }, new_value: { current_value: 5 }, undone_at: null, created_at: '2026-11-21T11:00:00Z' }],
   programs: [], program_modules: [], program_lessons: [],
   approvals: [
+    { id: 'apf1', owner_id: OWNER, type: 'Idea', title: 'Book the leak audit', payload: { body: 'Bottom of funnel', funnel_stage: 'bofu', format: 'Carousel', hook: 'Your ads are fine. Your follow-up is not.' }, tags: ['bofu'], language: 'en', source_agent: 'Content Strategist', target_module: 'content', status: 'pending', trashed_at: null, authored_by: 'ai', version: 1, created_at: '2026-11-05T10:00:00Z', updated_at: old },
     { id: 'ap1', owner_id: OWNER, type: 'Hooks', title: '5 Reel hooks: mortgage follow-up', payload: { body: '1. Your leads are not cold. Your follow-up is slow.\n2. [PROOF NEEDED]' }, tags: ['mortgage'], language: 'en', source_agent: 'Content Strategist', target_module: 'content', status: 'pending', trashed_at: null, authored_by: 'ai', version: 1, created_at: old, updated_at: old },
     { id: 'ap2', owner_id: OWNER, type: 'Ad copy', title: 'Prêt privé: 6 variations', payload: { body: 'Votre banque a dit non?' }, tags: ['meta ads'], language: 'fr-qc', source_agent: 'Content Strategist', target_module: 'content', status: 'pending', trashed_at: null, authored_by: 'ai', version: 1, created_at: '2026-11-03T10:00:00Z', updated_at: old },
     { id: 'ap3', owner_id: OWNER, type: 'Email sequence', title: 'Welcome sequence', payload: { body: 'Email 1' }, tags: [], language: 'en', source_agent: 'AI Chat', target_module: 'emails', status: 'pending', trashed_at: null, authored_by: 'ai', version: 1, created_at: '2026-11-04T10:00:00Z', updated_at: old },

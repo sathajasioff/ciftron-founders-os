@@ -165,19 +165,139 @@ export const median = (nums) => {
   const m = Math.floor(a.length / 2);
   return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
 };
+// Score each post against the creator's own median. Views when the platform gives them;
+// otherwise engagement (likes + 2 × comments + 3 × shares), so Facebook and LinkedIn rank too.
+export const engagementOf = (p) => (p.likes || 0) + 2 * (p.comments || 0) + 3 * (p.shares || 0);
 export function scorePosts(posts) {
-  const med = median(posts.map((p) => p.views));
-  return { median: Math.round(med), posts: posts.map((p) => ({ ...p, outlier_score: med ? Math.round((p.views / med) * 100) / 100 : null })) };
+  const withEng = posts.map((p) => ({ ...p, engagement: engagementOf(p) }));
+  const metric = withEng.some((p) => p.views > 0) ? 'views' : 'engagement';
+  const med = median(withEng.map((p) => p[metric] || 0));
+  return {
+    metric, median: Math.round(med),
+    posts: withEng.map((p) => ({ ...p, outlier_score: med ? Math.round(((p[metric] || 0) / med) * 100) / 100 : null })),
+  };
 }
-// Apify Instagram scraper items vary by actor version, so read several known field names.
+const num = (...vals) => { for (const v of vals) { const n = Number(v); if (v != null && v !== '' && Number.isFinite(n)) return Math.round(n); } return null; };
+const firstLine = (t) => String(t || '').trim().split('\n')[0].slice(0, 200);
+const httpsUrl = (u) => (typeof u === 'string' && /^https:\/\//.test(u) ? u.slice(0, 1000) : null);
+
+// Apify scraper items vary by actor version, so each mapper reads several known field names.
 export function mapInstagram(it) {
-  const views = Number(it.videoPlayCount ?? it.videoViewCount ?? it.playCount ?? it.viewCount ?? it.likesCount ?? 0);
-  return { external_id: String(it.id || it.shortCode || it.url || ''), title: String(it.caption || '').split('\n')[0].slice(0, 200), url: it.url || (it.shortCode ? `https://www.instagram.com/p/${it.shortCode}/` : null),
-    format: it.type === 'Video' || it.productType === 'clips' ? 'Reel' : it.type === 'Sidecar' ? 'Carousel' : 'Post', views, posted_at: it.timestamp || null };
+  return {
+    external_id: String(it.id || it.shortCode || it.url || ''), title: firstLine(it.caption),
+    url: it.url || (it.shortCode ? `https://www.instagram.com/p/${it.shortCode}/` : null),
+    format: it.type === 'Video' || it.productType === 'clips' ? 'Reel' : it.type === 'Sidecar' ? 'Carousel' : 'Post',
+    views: num(it.videoPlayCount, it.videoViewCount, it.playCount, it.viewCount), likes: num(it.likesCount), comments: num(it.commentsCount), shares: null,
+    thumbnail_url: httpsUrl(it.displayUrl || it.thumbnailUrl), posted_at: it.timestamp || null,
+  };
 }
 export function mapYouTube(v) {
-  return { external_id: v.id, title: v.snippet?.title || '', url: `https://www.youtube.com/watch?v=${v.id}`, format: 'Video', views: Number(v.statistics?.viewCount || 0), posted_at: v.snippet?.publishedAt || null };
+  const th = v.snippet?.thumbnails || {};
+  return {
+    external_id: v.id, title: v.snippet?.title || '', url: `https://www.youtube.com/watch?v=${v.id}`, format: 'Video',
+    views: num(v.statistics?.viewCount) ?? 0, likes: num(v.statistics?.likeCount), comments: num(v.statistics?.commentCount), shares: null,
+    thumbnail_url: httpsUrl((th.medium || th.high || th.default || {}).url), posted_at: v.snippet?.publishedAt || null,
+  };
 }
+export function mapFacebook(it) {
+  const media = Array.isArray(it.media) ? it.media[0] : null;
+  return {
+    external_id: String(it.postId || it.id || it.url || ''), title: firstLine(it.text || it.message),
+    url: it.url || it.topLevelUrl || null, format: it.isVideo ? 'Video' : media ? 'Photo' : 'Post',
+    views: num(it.viewsCount, it.videoViewCount, it.views), likes: num(it.likes, it.reactionsCount, it.topReactionsCount), comments: num(it.comments, it.commentsCount), shares: num(it.shares, it.sharesCount),
+    thumbnail_url: httpsUrl(media?.thumbnail || media?.photo_image?.uri || it.thumbnail), posted_at: it.time || it.timestamp || null,
+  };
+}
+export function mapLinkedIn(it) {
+  const st = it.stats || it.engagement || {};
+  const img = Array.isArray(it.images) ? it.images[0] : null;
+  return {
+    external_id: String(it.urn || it.postId || it.id || it.activityId || it.url || it.postUrl || ''), title: firstLine(it.text || it.content || it.commentary || it.headline),
+    url: it.url || it.postUrl || it.linkedinUrl || null, format: it.isArticle ? 'Article' : (it.video || it.videos?.length) ? 'Video' : 'Post',
+    views: num(it.views, it.impressions, st.views), likes: num(it.likes, it.num_likes, it.numLikes, it.reactionsCount, st.likes, st.total_reactions, it.stats_likes),
+    comments: num(it.comments, it.num_comments, it.numComments, it.commentsCount, st.comments, it.stats_comments), shares: num(it.shares, it.reposts, it.num_shares, st.reposts, st.shares, it.stats_reposts),
+    thumbnail_url: httpsUrl(typeof img === 'string' ? img : img?.url || it.media?.thumbnail), posted_at: it.postedAt || it.posted_at || it.date || it.time || it.publishedAt || null,
+  };
+}
+const valid = (p) => p.external_id && p.external_id !== 'undefined';
+
+// Which Apify actor and input each platform uses. LinkedIn has no official actor, so it can be swapped by env.
+export function apifyPlan(platform, creator, env = process.env) {
+  const handle = String(creator.handle || '').replace(/^@/, '');
+  if (platform === 'Instagram') return { actor: 'apify~instagram-post-scraper', input: { username: [handle], resultsLimit: 24 }, map: mapInstagram };
+  if (platform === 'Facebook') return { actor: 'apify~facebook-posts-scraper', input: { startUrls: [{ url: creator.profile_url || `https://www.facebook.com/${handle}` }], resultsLimit: 24 }, map: mapFacebook };
+  if (platform === 'LinkedIn') {
+    const url = creator.profile_url || `https://www.linkedin.com/in/${handle}`;
+    return { actor: env.APIFY_LINKEDIN_ACTOR || 'data-slayer~linkedin-profile-posts-scraper', input: { profileUrls: [url], maxItems: 24 }, map: mapLinkedIn };
+  }
+  return null;
+}
+
+// Runs an Apify actor, waits up to ~55 s, and returns the mapped items and the run's cost in USD.
+export async function apifyRun(token, { actor, input, map }, fetchImpl = fetch) {
+  const h = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  const r = await fetchImpl(`https://api.apify.com/v2/acts/${actor}/runs?waitForFinish=55`, { method: 'POST', headers: h, body: JSON.stringify(input), signal: AbortSignal.timeout(58000) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(`Apify returned ${r.status}: ${String(j.error?.message || '').slice(0, 150)}`), { status: 502 });
+  const run = j.data || {};
+  const cost = run.usageTotalUsd ?? null;
+  if (run.status !== 'SUCCEEDED') {
+    const err = new Error(run.status === 'RUNNING' || run.status === 'READY' ? 'Apify is still running this scrape. Press Fetch again in a minute.' : `Apify run ${String(run.status || 'failed').toLowerCase()}`);
+    throw Object.assign(err, { status: 502, run: { id: run.id, status: run.status || 'FAILED', cost } });
+  }
+  const d = await fetchImpl(`https://api.apify.com/v2/datasets/${run.defaultDatasetId}/items?clean=true&limit=50`, { headers: h });
+  const items = d.ok ? await d.json() : [];
+  return { runId: run.id, status: run.status, cost, posts: (Array.isArray(items) ? items : []).map(map).filter(valid) };
+}
+
+// ---------- Content funnel ----------
+export const FUNNEL_STAGES = { tofu: 'Top of funnel: reach and interest', mofu: 'Middle of funnel: educate and build trust', bofu: 'Bottom of funnel: ask for the call or sale' };
+export const CONTENT_FUNNEL_SYSTEM = `You reverse-engineer a content funnel for one business owner: content that moves strangers toward one offer or lead magnet.
+Top of funnel (tofu): broad problems and curiosity for the owner's audience. Middle (mofu): how it works, mistakes, frameworks, behind the scenes that build trust. Bottom (bofu): objections, who it is for, the offer itself and a clear call to action.
+Every idea must lead logically to the target. Use only facts from Brand DNA; put [PROOF NEEDED] where a result or testimonial would go.
+${RULES}
+Return only JSON: {"tofu": [{"title": "...", "format": "Short video | Carousel | Written post | Long video | Email", "hook": "...", "angle": "...", "cta": "..."}], "mofu": [...], "bofu": [...]}`;
+export function contentFunnelPrompt({ target, counts, language, notes }) {
+  return `Target: ${target}
+Ideas per stage: top ${counts.tofu}, middle ${counts.mofu}, bottom ${counts.bofu}.
+Language: ${language === 'fr-qc' ? 'Quebec French' : 'English'}.${notes ? `\nOwner notes: ${notes}` : ''}`;
+}
+const IDEA_FORMATS = ['Short video', 'Carousel', 'Written post', 'Long video', 'Email'];
+export function validateContentFunnel(j, counts) {
+  const out = {};
+  for (const st of Object.keys(FUNNEL_STAGES)) {
+    out[st] = arr(j?.[st], counts[st] || 5).map((x) => ({
+      title: str(x?.title, 140), format: IDEA_FORMATS.includes(x?.format) ? x.format : 'Short video',
+      hook: str(x?.hook, 300), angle: str(x?.angle, 600), cta: str(x?.cta, 200),
+    })).filter((x) => x.title);
+  }
+  if (!Object.values(out).some((l) => l.length)) throw new Error('The AI returned no ideas. Try again.');
+  return out;
+}
+export const ideaBody = (x, stage) => `${FUNNEL_STAGES[stage]}\n\nHook: ${x.hook}\n\nAngle: ${x.angle}\n\nCall to action: ${x.cta}`;
+
+// ---------- Voice playbook ----------
+export const PLAYBOOK_SYSTEM = `You build a voice playbook for one business owner: the questions their audience and clients ask, answered the way the owner answers them.
+Use only the owner's own material below. Every answer must be supported by a short quote copied exactly from that material.
+Write answers in the owner's voice: first person, plain, specific, 2 to 5 sentences. Never invent results, prices, dates or guarantees.
+${RULES}
+Return only JSON: {"pairs": [{"question": "...", "answer": "...", "quote": "exact words from the material"}]}`;
+export function playbookPrompt({ material, existing, count = 8, language }) {
+  return `Propose ${count} new question and answer pairs${language === 'fr-qc' ? ' in Quebec French' : ''}.
+Do not repeat these questions:\n${existing.map((q) => '- ' + q).join('\n') || '(none yet)'}
+
+# Owner's material
+${material}`;
+}
+const norm = (t) => String(t || '').toLowerCase().replace(/\s+/g, ' ').trim();
+export function validatePlaybook(j, material, existing = []) {
+  const src = norm(material), seen = new Set(existing.map(norm));
+  return arr(j?.pairs, 15).map((p) => ({ question: str(p?.question, 300), answer: str(p?.answer, 1500), quote: String(p?.quote || '').trim().slice(0, 400) }))
+    .filter((p) => p.question && p.answer && p.quote.length >= 12 && src.includes(norm(p.quote)) && !seen.has(norm(p.question)) && seen.add(norm(p.question)));
+}
+export const playbookBlock = (pairs) => (pairs.length
+  ? `# How the owner answers common questions (match this voice and these positions)\n${pairs.slice(0, 12).map((p) => `Q: ${p.question}\nA: ${p.answer}`).join('\n\n')}`
+  : '');
 
 // ---------- Learning signals ----------
 // Plain statistics from the owner's own approvals, passes and edits. No guessing.

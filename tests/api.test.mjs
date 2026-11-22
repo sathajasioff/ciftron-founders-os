@@ -305,3 +305,102 @@ test('team: at most 5 members', async () => {
   assert.equal(r.status, 400);
   assert.match(r.body.error, /Up to 5/);
 });
+
+// Phase 8
+test('feed: a Facebook account fetches through Apify, scores by engagement and records the run cost', async () => {
+  fake = installFakeSupabase({
+    seed: { provider_keys: [key('apify', 'api_token', 'apify_api_tok')], research_creators: [{ id: 'cr1', owner_id: OWNER.id, platform: 'Facebook', handle: '@ciftron', is_mine: true }] },
+    external: async (url) => (url.pathname.includes('/runs')
+      ? ok({ data: { id: 'run1', status: 'SUCCEEDED', usageTotalUsd: 0.021, defaultDatasetId: 'ds1' } })
+      : ok([{ postId: 'a', text: 'A', likes: 10 }, { postId: 'b', text: 'B', likes: 12 }, { postId: 'c', text: 'C', likes: 90, comments: 10, shares: 5 }])),
+  });
+  const studio = await load('studio');
+  const r = await invoke(studio, { body: { action: 'research_fetch', creator_id: 'cr1' } });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual([r.body.posts, r.body.metric, r.body.outliers, r.body.cost], [3, 'engagement', 1, 0.021]);
+  const run = fake.tables.apify_runs[0];
+  assert.deepEqual([run.cost_usd, run.items, run.outliers, run.platform, run.actor], [0.021, 3, 1, 'Facebook', 'apify~facebook-posts-scraper']);
+  const sent = fake.log.find((l) => l.external?.includes('/acts/apify~facebook-posts-scraper/runs'));
+  assert.deepEqual(JSON.parse(sent.body).startUrls, [{ url: 'https://www.facebook.com/ciftron' }]);
+  assert.equal(fake.tables.research_posts.find((p) => p.external_id === 'c').engagement, 125);
+});
+
+test('feed: an unfinished Apify run is still logged with its cost and shows a retry message', async () => {
+  fake = installFakeSupabase({
+    seed: { provider_keys: [key('apify', 'api_token', 'apify_api_tok')], research_creators: [{ id: 'cr1', owner_id: OWNER.id, platform: 'LinkedIn', handle: '@me', profile_url: 'https://www.linkedin.com/in/me' }] },
+    external: async () => ok({ data: { id: 'run2', status: 'RUNNING', usageTotalUsd: 0.003 } }),
+  });
+  const studio = await load('studio');
+  const r = await invoke(studio, { body: { action: 'research_fetch', creator_id: 'cr1' } });
+  assert.equal(r.status, 502);
+  assert.match(r.body.error, /still running/);
+  assert.equal(fake.tables.apify_runs[0].cost_usd, 0.003);
+  assert.match(fake.tables.research_creators[0].fetch_error, /still running/);
+});
+
+test('content funnel: ideas per stage become Approvals drafts tagged with their stage', async () => {
+  fake = installFakeSupabase({
+    seed: { provider_keys: [key('anthropic', 'api_key', 'sk-ant-k')], offers: [{ id: 'o1', owner_id: OWNER.id, name: 'Lead Gen', price: 497, currency: 'USD', cadence: 'month', services: ['Meta Ads'] }] },
+    external: async () => reply(JSON.stringify({ tofu: [{ title: 'Leads go cold', format: 'Short video', hook: 'h', angle: 'a', cta: 'Follow' }, { title: 'Second' }], mofu: [{ title: 'How we follow up' }], bofu: [{ title: 'Book the audit', cta: 'Book' }] })),
+  });
+  const studio = await load('studio');
+  const r = await invoke(studio, { body: { action: 'content_funnel', offer_id: 'o1', counts: { tofu: 2, mofu: 1, bofu: 1 } } });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.by_stage, { tofu: 2, mofu: 1, bofu: 1 });
+  assert.equal(fake.tables.approvals.length, 4);
+  const b = fake.tables.approvals.find((a) => a.title === 'Book the audit');
+  assert.equal(b.payload.funnel_stage, 'bofu');
+  assert.ok(b.tags.includes('bofu'));
+  const prompt = JSON.parse(fake.log.find((l) => l.external?.includes('anthropic')).body).messages[0].content;
+  assert.match(prompt, /Lead Gen" at 497 USD per month/);
+  assert.equal((await invoke(studio, { body: { action: 'content_funnel' } })).status, 400);
+});
+
+test('playbook: proposals need a real quote; approved pairs reach every chat prompt', async () => {
+  const source = 'Most brokers lose leads because they call back the next day. I call within five minutes, every time. '.repeat(3);
+  fake = installFakeSupabase({
+    seed: { provider_keys: [key('anthropic', 'api_key', 'sk-ant-k')], brain_sources: [{ id: 's1', owner_id: OWNER.id, name: 'Sales notes', content: source, status: 'ready' }] },
+    external: async (url, init) => {
+      const sys = JSON.parse(init.body).system || '';
+      if (/voice playbook/.test(sys)) return reply(JSON.stringify({ pairs: [{ question: 'How fast?', answer: 'Five minutes.', quote: 'I call within five minutes, every time.' }, { question: 'Guarantee?', answer: '10x', quote: 'made up quote that is not there' }] }));
+      return reply('Answer');
+    },
+  });
+  const studio = await load('studio'), chat = await load('chat');
+  const r = await invoke(studio, { body: { action: 'playbook_propose' } });
+  assert.equal(r.body.proposed, 1);
+  assert.equal(fake.tables.voice_playbook[0].status, 'proposed');
+  await invoke(chat, { body: { message: 'hello' } });
+  let sys = JSON.parse(fake.log.filter((l) => l.external?.includes('anthropic')).at(-1).body).system;
+  assert.ok(!sys.includes('Five minutes.'), 'proposed pairs are not used');
+  fake.tables.voice_playbook[0].status = 'approved';
+  await invoke(chat, { body: { message: 'hello again' } });
+  sys = JSON.parse(fake.log.filter((l) => l.external?.includes('anthropic')).at(-1).body).system;
+  assert.match(sys, /Q: How fast\?\nA: Five minutes\./);
+});
+
+test('model picker: GPT and OpenRouter models answer chat; unknown models are refused', async () => {
+  fake = installFakeSupabase({
+    seed: { provider_keys: [key('openai', 'api_key', 'sk-proj-x'), key('openrouter', 'api_key', 'sk-or-v1-x')] },
+    external: async (url) => {
+      if (url.pathname.endsWith('/embeddings')) return ok({ data: [{ index: 0, embedding: Array(1536).fill(0) }] });
+      if (url.hostname === 'openrouter.ai' && url.pathname.endsWith('/models')) return ok({ data: [{ id: 'google/gemini-x', name: 'Gemini X', architecture: { output_modalities: ['text'] } }, { id: 'img/model', name: 'Img', architecture: { output_modalities: ['image', 'text'] } }] });
+      return ok({ choices: [{ message: { content: `from ${url.hostname}` } }] });
+    },
+  });
+  fake.tables.__rpc = { match_chunks: () => [] };
+  const chat = await load('chat'), studio = await load('studio');
+  const g = await invoke(chat, { body: { message: 'hi', model: 'gpt' } });
+  assert.equal(g.status, 200, JSON.stringify(g.body));
+  assert.match(fake.tables.messages.at(-1).content, /api.openai.com/);
+  const o = await invoke(chat, { body: { message: 'hi', model: 'or:google/gemini-x' } });
+  assert.equal(o.status, 200, JSON.stringify(o.body));
+  assert.equal(fake.tables.messages.at(-1).model, 'google/gemini-x');
+  const sent = JSON.parse(fake.log.filter((l) => l.external?.includes('openrouter.ai/api/v1/chat')).at(-1).body);
+  assert.equal(sent.model, 'google/gemini-x');
+  assert.equal(sent.messages[0].role, 'system');
+  assert.equal((await invoke(chat, { body: { message: 'hi', model: 'evil model; drop' } })).status, 400);
+  const m = await invoke(studio, { body: { action: 'chat_models' } });
+  assert.deepEqual(m.body.models.map((x) => x.id), ['google/gemini-x']);
+  assert.ok(!fake.log.some((l) => l.external?.includes('anthropic')), 'no Claude key needed');
+});

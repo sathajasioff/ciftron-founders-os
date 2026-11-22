@@ -301,3 +301,47 @@ Notes:
 - **Remove** cuts access immediately and deletes their sign-in account. Work they did stays.
 - Up to 5 members. Each person can only be on one team.
 - Supabase's built-in email sender allows only a few sign-in emails per hour. If links stop arriving with several people, add your own SMTP in **Supabase → Authentication → Emails**.
+
+# Phase 8 update (content growth)
+
+1. **Required:** in Supabase SQL Editor, run `supabase/migrations/20261122000008_growth.sql`.
+2. **Apify token** (Connections) is needed for Instagram, Facebook and LinkedIn. YouTube uses the YouTube key.
+3. **OpenRouter key** (Connections) is optional. It unlocks more models in AI Chat.
+
+## My feed (Content → My feed)
+
+- Click **My account** and add each of your channels:
+  - Instagram: @handle
+  - YouTube: @handle
+  - Facebook: page URL
+  - LinkedIn: profile URL, for example `https://www.linkedin.com/in/your-name`
+- Then click **Refresh all**.
+- Each post shows views (when the platform shares them), likes, comments, shares and a score against your own median.
+- Facebook and LinkedIn often hide views, so they're scored on engagement: likes + 2 × comments + 3 × shares.
+- **Remix** turns any winner into new drafts in Approvals.
+- LinkedIn has no official Apify actor. The default is `data-slayer~linkedin-profile-posts-scraper` (paid per result). To use another one, set `APIFY_LINKEDIN_ACTOR` in Vercel.
+
+## Apify spend (Content → Research)
+
+Every Apify run records its cost. The Research tab shows the last 30 days: spend, runs, posts, outliers and cost per outlier.
+
+## Content funnel (Content → Funnel)
+
+- Pick an offer, or describe a lead magnet. Choose how many ideas you want per stage (top, middle, bottom), then click **Plan ideas**.
+- Each idea goes to Approvals, tagged `tofu`, `mofu` or `bofu`.
+- Approved ideas land on the board with their stage, and the tab shows your mix.
+- You can also set or change the stage on any card.
+
+## Voice playbook (Brain → Playbook)
+
+- **Suggest from my Brain** reads your sources and approved facts and proposes questions with your answers.
+- A pair is only proposed if its answer is backed by a quote that really appears in your material.
+- Approve, edit (marked as your words) or reject each one. **Add my own** adds a pair directly.
+- Approved pairs, up to 12 of the most recent, are added to every AI Chat message, agent, Jarvis answer and routine. Claude Code can read them through the MCP tool `list_playbook`.
+
+## Model picker (AI Chat)
+
+- Next to **Send**, choose **Claude** (the default), **GPT (OpenAI)**, or **More models (OpenRouter)** to load every OpenRouter text model.
+- The choice is remembered, and each reply shows which model wrote it.
+- Images in a chat are only read by Claude.
+- The Strategy Room always uses Claude and GPT.

@@ -3,7 +3,7 @@
 import { getSecret, embed, claude } from './providers.js';
 import { systemPrompt, extractDrafts, cleanCopy, CONTEXT_AGENTS } from './chat.js';
 import { businessContext } from './context.js';
-import { signalsBlock } from './studio.js';
+import { signalsBlock, playbookBlock } from './studio.js';
 import { ownerDb } from './mcp-tools.js';
 
 const CONTENT_AGENTS = ['content-strategist', 'copywriter', 'designer', 'researcher'];
@@ -57,7 +57,8 @@ export async function runRoutine(admin, ownerId, r, { now = new Date(), timeZone
     const context = CONTEXT_AGENTS.includes(agent.slug) ? (await businessContext(db, admin, ownerId, { meta: agent.slug !== 'crm-assistant' })).text : '';
     const signals = CONTENT_AGENTS.includes(agent.slug) ? signalsBlock(await one(db.from('learning_signals').select('signal').eq('state', 'on'))) : '';
 
-    const raw = await callClaude(key, { system: systemPrompt({ dna: dna?.markdown, agent, brainHits, warnings, context, signals }), prompt: routinePrompt(r, now, timeZone), maxTokens: 3500 });
+    const playbook = playbookBlock(await one(db.from('voice_playbook').select('question, answer').eq('status', 'approved').limit(12)).catch(() => []));
+    const raw = await callClaude(key, { system: systemPrompt({ dna: dna?.markdown, agent, brainHits, warnings, context, signals, playbook }), prompt: routinePrompt(r, now, timeZone), maxTokens: 3500 });
     let { drafts, reply } = extractDrafts(raw);
     // A reply without draft tags is still kept, as one brief, so the run is never lost.
     if (!drafts.length && reply.trim()) drafts = [{ type: 'Brief', title: `${r.title || agent.name}: ${localParts(now, timeZone).date}`, language: r.language || 'en', target: 'content', tags: ['routine'], body: cleanCopy(reply.trim()) }];
