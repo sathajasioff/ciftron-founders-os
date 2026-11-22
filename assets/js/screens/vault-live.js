@@ -34,12 +34,12 @@ export async function render(el, ctx) {
         ov.querySelectorAll('[data-k]').forEach((b) => b.onclick = () => { kind = b.dataset.k; ov.querySelectorAll('[data-k]').forEach((x) => x.classList.toggle('active', x === b)); ov.querySelectorAll('[data-p]').forEach((p) => p.classList.toggle('hidden', p.dataset.p !== kind)); });
         ov.querySelector('[data-ok]').onclick = async () => {
           const v = (id) => ov.querySelector(id).value.trim();
-          const row = { owner_id: live.user.id, kind, title: v('#vt') || 'Example', note: v('#vn') || null };
+          const row = { owner_id: live.ownerId, kind, title: v('#vt') || 'Example', note: v('#vn') || null };
           try {
             if (kind === 'url') { if (!/^https?:\/\//.test(v('#vu'))) return toast('Enter a full URL'); row.url = v('#vu'); }
             if (kind === 'text') { if (!v('#vb')) return toast('Paste the text'); row.body = v('#vb'); }
             if (kind === 'screenshot') { const f = ov.querySelector('#vf').files[0]; if (!f) return toast('Choose an image');
-              const path = `${live.user.id}/vault/${crypto.randomUUID()}-${f.name.replace(/[^\w.\-]+/g, '_').slice(-80)}`;
+              const path = `${live.ownerId}/vault/${crypto.randomUUID()}-${f.name.replace(/[^\w.\-]+/g, '_').slice(-80)}`;
               const { error } = await live.sb.storage.from('brain').upload(path, f, { contentType: f.type }); if (error) throw new Error(error.message); row.storage_path = path; }
             await q(live.sb.from('vault_items').insert(row)); close(); refresh();
           } catch (e) { toast(e.message); }

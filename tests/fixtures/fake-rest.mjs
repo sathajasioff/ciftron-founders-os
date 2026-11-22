@@ -7,6 +7,8 @@ import { randomUUID } from 'node:crypto';
 export const SB = 'https://fake.supabase.co';
 export const OWNER = { id: '11111111-1111-1111-1111-111111111111', email: 'owner@ciftron.com' };
 export const STRANGER = { id: '33333333-3333-3333-3333-333333333333', email: 'stranger@example.com' };
+export const MEMBER = { id: '44444444-4444-4444-4444-444444444444', email: 'member@example.com' };
+export const MEMBER_TOKEN = 'user-jwt-member';
 export const USER_TOKEN = 'user-jwt-owner';
 export const STRANGER_TOKEN = 'user-jwt-stranger';
 const SERVICE = 'service-role-key';
@@ -72,6 +74,7 @@ export function installFakeSupabase({ seed = {}, external } = {}) {
       return json(fn ? fn(body, who) : []);
     }
     const t = path;
+    if (who.role === 'user' && !who.owner && method !== 'GET' && ['connections', 'profiles'].includes(t)) return json({ message: 'new row violates row-level security policy', code: '42501' }, 403);
     if (who.role === 'user' && BROWSER_DENIED.includes(t)) return json({ message: `permission denied for table ${t}`, code: '42501' }, 403);
     const scoped = (r) => who.role === 'service' || !('owner_id' in r) || r.owner_id === who.id;
     const match = parseFilters(url.searchParams);
@@ -146,13 +149,32 @@ export function installFakeSupabase({ seed = {}, external } = {}) {
     }
     const auth = new Headers(init.headers).get('authorization') || '';
     const bearer = auth.replace(/^Bearer /, '');
+    if (url.pathname.startsWith('/auth/v1/admin/users')) {
+      if (bearer !== SERVICE) return json({ message: 'forbidden' }, 403);
+      const users = (tables.__users ||= []);
+      const method = (init.method || 'GET').toUpperCase();
+      log.push({ auth: `${method} ${url.pathname}` });
+      if (method === 'POST') {
+        const { email } = JSON.parse(init.body);
+        if (users.some((u) => u.email === email) || [OWNER.email, STRANGER.email].includes(email)) return json({ code: 422, msg: 'A user with this email address has already been registered', error_code: 'email_exists' }, 422);
+        const u = { id: randomUUID(), email, aud: 'authenticated' };
+        users.push(u);
+        return json(u);
+      }
+      if (method === 'DELETE') { const id = url.pathname.split('/').pop(); tables.__users = users.filter((u) => u.id !== id); return json({}); }
+      return json({ users: [...users, { ...STRANGER }], aud: 'authenticated' });
+    }
     if (url.pathname === '/auth/v1/user') {
       if (bearer === USER_TOKEN) return json({ ...OWNER, aud: 'authenticated', role: 'authenticated' });
+      if (bearer === MEMBER_TOKEN) return json({ ...MEMBER, aud: 'authenticated', role: 'authenticated' });
       if (bearer === STRANGER_TOKEN) return json({ ...STRANGER, aud: 'authenticated', role: 'authenticated' });
       return json({ message: 'invalid JWT' }, 401);
     }
     if (url.pathname.startsWith('/rest/v1/')) {
-      const who = bearer === SERVICE ? { role: 'service' } : bearer === USER_TOKEN ? { role: 'user', id: OWNER.id } : { role: 'anon' };
+      // A member works in the owner's workspace (workspace_owner() in the real database).
+      const memberOf = (tables.workspace_members || []).find((m) => m.member_id === MEMBER.id)?.owner_id;
+      const who = bearer === SERVICE ? { role: 'service' } : bearer === USER_TOKEN ? { role: 'user', id: OWNER.id, owner: true }
+        : bearer === MEMBER_TOKEN ? { role: 'user', id: memberOf || MEMBER.id, owner: false } : { role: 'anon' };
       if (who.role === 'anon') return json([], 200);
       return rest(url, init, who);
     }

@@ -43,9 +43,9 @@ export async function render(el, ctx) {
     $('#pdel', el).onclick = () => modal({ title: 'Delete program', body: `<p class="small">Deletes "${esc(p.name)}" with its modules and lessons. Anything already sent to HighLevel stays there.</p>`, foot: `<button class="btn" data-close>${t('c.cancel')}</button><button class="btn btn-danger solid" data-ok>Delete</button>`,
       onMount: (ov, close) => { ov.querySelector('[data-ok]').onclick = async () => { await q(live.sb.from('programs').delete().eq('id', p.id)).catch((e) => toast(e.message)); close(); ui.sel = null; refresh(); }; } });
     el.querySelectorAll('[data-mt]').forEach((i) => i.onchange = async () => { await q(live.sb.from('program_modules').update({ title: i.value.trim() || 'Module' }).eq('id', i.dataset.mt)).catch((e) => toast(e.message)); });
-    el.querySelectorAll('[data-addl]').forEach((b) => b.onclick = async () => { const n = lessons.filter((l) => l.module_id === b.dataset.addl).length; await q(live.sb.from('program_lessons').insert({ owner_id: live.user.id, module_id: b.dataset.addl, title: 'New lesson', sort: n })).catch((e) => toast(e.message)); refresh(); });
+    el.querySelectorAll('[data-addl]').forEach((b) => b.onclick = async () => { const n = lessons.filter((l) => l.module_id === b.dataset.addl).length; await q(live.sb.from('program_lessons').insert({ owner_id: live.ownerId, module_id: b.dataset.addl, title: 'New lesson', sort: n })).catch((e) => toast(e.message)); refresh(); });
     el.querySelectorAll('[data-rmm]').forEach((b) => b.onclick = async () => { await q(live.sb.from('program_modules').delete().eq('id', b.dataset.rmm)).catch((e) => toast(e.message)); refresh(); });
-    $('#addm', el).onclick = async () => { await q(live.sb.from('program_modules').insert({ owner_id: live.user.id, program_id: p.id, title: `Module ${modules.length + 1}`, sort: modules.length })).catch((e) => toast(e.message)); refresh(); };
+    $('#addm', el).onclick = async () => { await q(live.sb.from('program_modules').insert({ owner_id: live.ownerId, program_id: p.id, title: `Module ${modules.length + 1}`, sort: modules.length })).catch((e) => toast(e.message)); refresh(); };
     el.querySelectorAll('[data-lesson]').forEach((c) => c.onclick = () => editLesson(lessons.find((l) => l.id === c.dataset.lesson)));
     $('#send', el).onclick = () => hlWrite('course', { program: asProgram(p) }, { onDone: () => upd({ stage: p.stage === 'idea' ? 'draft' : p.stage }) });
   };
@@ -61,7 +61,7 @@ export async function render(el, ctx) {
           const patch = { title: ov.querySelector('#lt').value.trim() || 'Lesson', body: ov.querySelector('#lb').value };
           const f = ov.querySelector('#lf').files[0];
           try {
-            if (f) { const path = `${live.user.id}/programs/${crypto.randomUUID()}-${f.name.replace(/[^\w.\-]+/g, '_').slice(-80)}`; const { error } = await live.sb.storage.from('brain').upload(path, f); if (error) throw new Error(error.message); patch.file_paths = [...(l.file_paths || []), path]; }
+            if (f) { const path = `${live.ownerId}/programs/${crypto.randomUUID()}-${f.name.replace(/[^\w.\-]+/g, '_').slice(-80)}`; const { error } = await live.sb.storage.from('brain').upload(path, f); if (error) throw new Error(error.message); patch.file_paths = [...(l.file_paths || []), path]; }
             await q(live.sb.from('program_lessons').update(patch).eq('id', l.id)); close(); refresh();
           } catch (e) { toast(e.message); }
         };
@@ -72,7 +72,7 @@ export async function render(el, ctx) {
     modal({ title: 'New program', body: `<div class="stack"><div class="field"><label>Name</label><input class="input" id="pn"></div><div class="field"><label>Description</label><textarea class="textarea" id="pd"></textarea></div></div>`,
       foot: `<button class="btn" data-close>${t('c.cancel')}</button><button class="btn btn-primary" data-ok>Create</button>`,
       onMount: (ov, close) => { ov.querySelector('[data-ok]').onclick = async () => { const name = ov.querySelector('#pn').value.trim(); if (!name) return;
-        try { const [r] = await q(live.sb.from('programs').insert({ owner_id: live.user.id, name, description: ov.querySelector('#pd').value.trim() || null }).select('id')); close(); ui.sel = r.id; refresh(); } catch (e) { toast(e.message); } }; } });
+        try { const [r] = await q(live.sb.from('programs').insert({ owner_id: live.ownerId, name, description: ov.querySelector('#pd').value.trim() || null }).select('id')); close(); ui.sel = r.id; refresh(); } catch (e) { toast(e.message); } }; } });
   }
 
   function propose() {

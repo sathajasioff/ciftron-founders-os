@@ -1,6 +1,7 @@
 // Live mode: Supabase auth and calls to our server functions.
 // If /api/config is missing (local static server, hosted demo), the app stays in demo mode.
-export const live = { on: false, sb: null, session: null, user: null };
+// ownerId: the workspace whose data you work on (yours, or the owner's if you are a team member).
+export const live = { on: false, sb: null, session: null, user: null, ownerId: null, role: 'owner' };
 
 const SUPABASE_ESM = 'https://esm.sh/@supabase/supabase-js@2.119.2';
 
@@ -16,6 +17,11 @@ export async function initLive() {
   live.on = true;
   const { data } = await live.sb.auth.getSession();
   setSession(data.session);
+  if (live.session) {
+    const { data: owner } = await live.sb.rpc('workspace_owner');
+    live.ownerId = typeof owner === 'string' && owner ? owner : live.user.id;
+    live.role = live.ownerId === live.user.id ? 'owner' : 'member';
+  }
   live.sb.auth.onAuthStateChange((_e, s) => {
     const was = !!live.session;
     setSession(s);

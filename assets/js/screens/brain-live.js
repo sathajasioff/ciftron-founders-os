@@ -100,7 +100,7 @@ export async function render(el) {
             const r = await versionedUpdate('brain_facts', f, { text, category, authored_by: 'me' });
             if (r.conflict) { close(); toast('This fact changed somewhere else. Reloaded the latest, your edit was not saved.'); return refresh(); }
           } else {
-            await q(live.sb.from('brain_facts').insert({ owner_id: live.user.id, text, category, status: 'approved', authored_by: 'me' }));
+            await q(live.sb.from('brain_facts').insert({ owner_id: live.ownerId, text, category, status: 'approved', authored_by: 'me' }));
           }
           close(); await refresh();
         } catch (e) { fail(e); }
@@ -174,7 +174,7 @@ export async function render(el) {
               for (const f of files) {
                 if (f.size > 50 * 1024 * 1024) throw new Error(`${f.name} is over 50 MB`);
                 prog.textContent = `Uploading ${f.name}...`;
-                const path = `${live.user.id}/${crypto.randomUUID()}-${f.name.replace(/[^\w.\-]+/g, '_').slice(-120)}`;
+                const path = `${live.ownerId}/${crypto.randomUUID()}-${f.name.replace(/[^\w.\-]+/g, '_').slice(-120)}`;
                 const { error } = await live.sb.storage.from('brain').upload(path, f, { contentType: f.type || 'application/octet-stream' });
                 if (error) throw new Error(error.message);
                 rows.push({ kind: 'file', name: f.name, mime: f.type, storage_path: path });
@@ -188,7 +188,7 @@ export async function render(el) {
               if (content.length < 20) throw new Error('Paste a bit more text');
               rows.push({ kind: 'text', name: ov.querySelector('#utn').value.trim() || 'Pasted text', content, mime: 'text/plain' });
             }
-            const created = await q(live.sb.from('brain_sources').insert(rows.map((r) => ({ ...r, owner_id: live.user.id, is_writing_sample: ws }))).select('id, name'));
+            const created = await q(live.sb.from('brain_sources').insert(rows.map((r) => ({ ...r, owner_id: live.ownerId, is_writing_sample: ws }))).select('id, name'));
             if (auto) {
               for (const s of created) {
                 prog.textContent = `Processing ${s.name}...`; await ingest(s.id);
@@ -231,7 +231,7 @@ export async function render(el) {
       onMount: (ov, close) => { ov.querySelector('[data-ok]').onclick = async () => {
         const split = (id) => ov.querySelector(id).value.split('\n').map((x) => x.trim()).filter(Boolean);
         const guide = { ...g.guide, summary: ov.querySelector('#s1').value.trim(), rules: split('#s2'), avoid: split('#s3'), french_notes: ov.querySelector('#s4').value.trim() };
-        try { await q(live.sb.from('style_guides').insert({ owner_id: live.user.id, version_no: g.version_no + 1, guide, sample_source_ids: g.sample_source_ids, authored_by: 'me' })); close(); refresh(); }
+        try { await q(live.sb.from('style_guides').insert({ owner_id: live.ownerId, version_no: g.version_no + 1, guide, sample_source_ids: g.sample_source_ids, authored_by: 'me' })); close(); refresh(); }
         catch (e) { fail(/duplicate/.test(e.message) ? new Error('A newer version was saved meanwhile. Reload and try again.') : e); }
       }; } });
   }
@@ -277,7 +277,7 @@ export async function render(el) {
         if (!patch.name) return;
         try {
           if (o) { const r = await versionedUpdate('offers', o, patch); if (r.conflict) toast('Offer changed elsewhere. Your edit was not saved.'); }
-          else await q(live.sb.from('offers').insert({ ...patch, owner_id: live.user.id, sort: S.offers.length + 1 }));
+          else await q(live.sb.from('offers').insert({ ...patch, owner_id: live.ownerId, sort: S.offers.length + 1 }));
           close(); refresh();
         } catch (e) { fail(e); }
       }; } });

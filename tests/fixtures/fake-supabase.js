@@ -39,6 +39,7 @@ const db = (window.__FAKE_DB__ ||= {
   vault_items: [{ id: 'v1', owner_id: OWNER, kind: 'url', title: 'Clean pricing page', url: 'https://example.com', note: 'Layout', created_at: old }],
   goals: [], goal_items: [],
   agent_routines: [],
+  workspace_members: [],
   error_log: [{ id: 3, owner_id: OWNER, source: 'server', route: '/api/studio', status: 500, message: 'OpenRouter timed out', detail: { action: 'graphic' }, created_at: '2026-11-21T12:00:00Z' }],
   mcp_tokens: [{ id: 'mt1', owner_id: OWNER, name: 'Claude Code laptop', scope: 'read_write', token_prefix: 'cfos_AbCdEfG', last_used_at: '2026-11-21T10:00:00Z', revoked_at: null, created_at: old }],
   mcp_edit_log: [{ id: 7, owner_id: OWNER, token_id: 'mt1', action: 'update', tool: 'update_goal', table_name: 'goals', row_id: 'g9', previous_value: { current_value: 2 }, new_value: { current_value: 5 }, undone_at: null, created_at: '2026-11-21T11:00:00Z' }],
@@ -95,11 +96,13 @@ class Query {
 
 export function createClient() {
   const signedIn = localStorage.getItem('fake.session') === '1';
-  const session = signedIn ? { access_token: 'test-token', user: { id: OWNER, email: 'owner@ciftron.com' } } : null;
+  // fake.member = '1' signs in as a team member working in the owner's workspace.
+  const member = localStorage.getItem('fake.member') === '1';
+  const session = signedIn ? { access_token: 'test-token', user: member ? { id: '44444444-4444-4444-4444-444444444444', email: 'member@example.com' } : { id: OWNER, email: 'owner@ciftron.com' } } : null;
   window.__FAKE_CALLS__ ||= [];
   return {
     from: (t) => new Query(t),
-    rpc: async () => ({ data: [], error: null }),
+    rpc: async (name) => (name === 'workspace_owner' ? { data: OWNER, error: null } : { data: [], error: null }),
     storage: { from: () => ({ upload: async (p) => { window.__FAKE_CALLS__.push(['upload', p]); return { data: { path: p }, error: null }; }, remove: async () => ({ data: [], error: null }), createSignedUrl: async () => ({ data: { signedUrl: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=' } }) }) },
     auth: {
       getSession: async () => ({ data: { session } }),

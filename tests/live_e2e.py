@@ -44,6 +44,7 @@ def _api(route):
                'program_propose': {'approval_id': 'apx'}, 'vault_brief': {'brief': {}}, 'learning_refresh': {'signals': 1}, 'routine_run': {'status': 'ok', 'drafts': 2}, 'research_fetch': {'posts': 12, 'median': 1800},
                'graphic': {'b64': 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP4z8DwHwyBNAOU8R8AjjgL9YdRIygAAAAASUVORK5CYII=', 'media_type': 'image/png', 'prompt': 'p', 'model': 'm', 'cost': 0.04}, 'rewrite_email': {'subject': 'New subject', 'preview': '', 'body': 'Shorter body'}}.get(a, {'ok': True})
     elif path == 'account' and body.get('action') == 'mcp_token_create': out = {'token': 'cfos_' + 'T' * 43, 'id': 'mt2', 'name': body['name'], 'scope': body['scope'], 'token_prefix': 'cfos_TTTTTTT'}
+    elif path == 'account' and body.get('action') == 'member_invite': out = {'member': {'id': 'wm1', 'email': body['email'], 'role': 'member'}}
     elif path == 'account' and body.get('action') == 'mcp_undo': out = {'ok': True, 'message': 'Restored the previous value'}
     elif path == 'meta': out = {'range': 'last_7d', 'spend': 198.8, 'leads': 14, 'cpl': 14.2, 'previous': {'spend': 160, 'leads': 10, 'cpl': 16}, 'campaigns': [{'id': '1', 'name': 'Mortgage leads', 'spend': 198.8, 'leads': 14, 'cpl': 14.2}]}
     elif path == 'chat': out = {'thread_id': 't1', 'messages': [], 'drafts': [{'id': 'new', 'title': 'Hooks', 'type': 'Hooks'}], 'warnings': ['Brain search skipped: OpenAI has no credits left.']}
@@ -335,9 +336,29 @@ try:
         pg.evaluate("window.dispatchEvent(new ErrorEvent('error', { message: 'Test boom', error: new Error('Test boom') }))")
         pg.wait_for_timeout(300)
         assert len([c for c in calls if c[0] == 'account' and c[2].get('action') == 'log_error']) == 1, 'same error reported twice'
+
+        # 28. Team: the owner adds a member
+        pg.wait_for_selector('#mem'); pg.fill('#mem', 'helper@example.com'); pg.click('#minvbtn'); pg.wait_for_selector('text=helper@example.com added')
+        assert [c for c in calls if c[0] == 'account'][-1][2] == {'action': 'member_invite', 'email': 'helper@example.com'}
+        shot(pg, 'team-owner')
+
+        # 29. Signed in as a member: owner data, no keys, MCP, export or danger zone
+        pg.evaluate("localStorage.setItem('fake.member', '1')"); pg.goto(base + '#connections'); pg.reload()
+        pg.wait_for_selector('text=You are a team member')
+        assert pg.locator('.sidebar-foot').inner_text().count('Team member') == 1
+        assert pg.locator('[data-conn]').count() == 0 and pg.locator('[data-test]').count() == 0 and pg.locator('[data-rm]').count() == 0
+        assert pg.locator('text=Only the owner can change keys.').count() > 0
+        assert pg.locator('#mcpcard').count() == 0 and pg.locator('#exp').count() == 0 and pg.locator('#delbtn').count() == 0
+        assert pg.locator('#errcard').count() == 1
+        shot(pg, 'team-member')
+        pg.goto(base + '#team'); pg.wait_for_selector('[data-agent=copywriter], [data-agent=content-strategist]')
+        pg.locator('[data-agent=content-strategist]').click(); pg.click('#rnew'); pg.wait_for_selector('#rp'); pg.fill('#rt', 'Member routine'); pg.click('.modal [data-ok]'); pg.wait_for_selector('text=Member routine')
+        rt = pg.evaluate("window.__FAKE_DB__.agent_routines.find(r => r.title === 'Member routine')")
+        assert rt['owner_id'] == '11111111-1111-1111-1111-111111111111', 'member rows belong to the owner'
+        pg.evaluate("localStorage.removeItem('fake.member')")
         b.close()
 finally:
     srv.terminate()
 if errors:
     print('\n'.join(errors)); sys.exit(1)
-print('OK: live mode e2e (login, Brain, keys, Approvals, Chat, Team, Pipeline, HighLevel writes, Jarvis, Content, Emails, Funnels, Graphics, Vault, Goals, Programs, Routines, MCP, Error log, CSP)')
+print('OK: live mode e2e (login, Brain, keys, Approvals, Chat, Team, Pipeline, HighLevel writes, Jarvis, Content, Emails, Funnels, Graphics, Vault, Goals, Programs, Routines, MCP, Error log, CSP, Team)')

@@ -106,7 +106,7 @@ export async function render(el, ctx) {
       foot: `<button class="btn" data-close>${t('c.cancel')}</button><button class="btn btn-primary" data-ok>Create</button>`,
       onMount: (ov, close) => { ov.querySelector('[data-ok]').onclick = async () => {
         const name = ov.querySelector('#nn').value.trim(); if (!name) return;
-        try { const [r] = await q(live.sb.from('funnels').insert({ owner_id: live.user.id, name, funnel_type: ov.querySelector('#nt').value, offer_id: ov.querySelector('#no').value || null }).select('id')); close(); ui.sel = r.id; ui.tab = 'brief'; refresh(); } catch (e) { toast(e.message); }
+        try { const [r] = await q(live.sb.from('funnels').insert({ owner_id: live.ownerId, name, funnel_type: ov.querySelector('#nt').value, offer_id: ov.querySelector('#no').value || null }).select('id')); close(); ui.sel = r.id; ui.tab = 'brief'; refresh(); } catch (e) { toast(e.message); }
       }; } });
   }
 

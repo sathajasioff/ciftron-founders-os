@@ -56,7 +56,7 @@ export async function render(el, ctx) {
         let card = null;
         if (a.target_module === 'content') {
           const body = a.payload?.body || '';
-          card = (await q(live.sb.from('content_items').insert({ owner_id: live.user.id, title: a.title, format: FORMAT[a.type] || a.type, language: a.language, stage: 'Idea', hook: body.split('\n').find((l) => l.trim())?.replace(/^\s*\d+[.)]\s*/, '').slice(0, 200) || null, notes: body, approval_id: a.id, authored_by: a.authored_by }).select('id')))[0];
+          card = (await q(live.sb.from('content_items').insert({ owner_id: live.ownerId, title: a.title, format: FORMAT[a.type] || a.type, language: a.language, stage: 'Idea', hook: body.split('\n').find((l) => l.trim())?.replace(/^\s*\d+[.)]\s*/, '').slice(0, 200) || null, notes: body, approval_id: a.id, authored_by: a.authored_by }).select('id')))[0];
         }
         let undoModule = null;
         if (a.target_module === 'emails' && a.payload?.sequence_id) {
@@ -68,10 +68,10 @@ export async function render(el, ctx) {
         if (a.target_module === 'programs' && a.payload?.program) {
           // Approving a proposal builds the program board exactly as proposed.
           const pr = a.payload.program;
-          const [prog] = await q(live.sb.from('programs').insert({ owner_id: live.user.id, name: pr.name, description: pr.description, stage: 'draft' }).select('id'));
+          const [prog] = await q(live.sb.from('programs').insert({ owner_id: live.ownerId, name: pr.name, description: pr.description, stage: 'draft' }).select('id'));
           for (const [i, m] of pr.modules.entries()) {
-            const [mod] = await q(live.sb.from('program_modules').insert({ owner_id: live.user.id, program_id: prog.id, title: m.title, sort: i }).select('id'));
-            if (m.lessons.length) await q(live.sb.from('program_lessons').insert(m.lessons.map((l, j) => ({ owner_id: live.user.id, module_id: mod.id, title: l.title, body: l.summary, sort: j }))));
+            const [mod] = await q(live.sb.from('program_modules').insert({ owner_id: live.ownerId, program_id: prog.id, title: m.title, sort: i }).select('id'));
+            if (m.lessons.length) await q(live.sb.from('program_lessons').insert(m.lessons.map((l, j) => ({ owner_id: live.ownerId, module_id: mod.id, title: l.title, body: l.summary, sort: j }))));
           }
           undoModule = () => q(live.sb.from('programs').delete().eq('id', prog.id));
         }

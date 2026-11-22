@@ -4,7 +4,7 @@ import { encrypt, last4 } from './_lib/crypto.js';
 import { PROVIDERS, testProvider, getSecret } from './_lib/providers.js';
 
 export default handler(['GET', 'POST', 'DELETE'], async (req, body) => {
-  const { user, db, admin } = await requireOwner(req);
+  const { user, db, admin } = await requireOwner(req, { ownerOnly: req.method !== 'GET' });
 
   if (req.method === 'GET') {
     const [{ data: keys, error }, { data: conns }] = await Promise.all([

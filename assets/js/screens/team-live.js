@@ -142,7 +142,7 @@ export async function render(el, ctx) {
           if (!row.prompt) return toast('Write what the routine should do');
           try {
             if (r) await q(live.sb.from('agent_routines').update(row).eq('id', r.id).select('id'));
-            else await q(live.sb.from('agent_routines').insert({ ...row, owner_id: live.user.id, agent_id: a.id, enabled: true }).select('id'));
+            else await q(live.sb.from('agent_routines').insert({ ...row, owner_id: live.ownerId, agent_id: a.id, enabled: true }).select('id'));
             close(); toast(r ? 'Routine saved' : 'Routine added'); await loadThread(); draw();
           } catch (e) { toast(e.message); }
         };

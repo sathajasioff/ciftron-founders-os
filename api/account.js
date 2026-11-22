@@ -11,13 +11,14 @@ const EXPORT_TABLES = ['profiles', 'offers', 'brain_sources', 'brain_facts', 'st
   'goals', 'goal_items', 'connections', 'audit_log', 'hl_write_log', 'error_log'];
 
 // Delete order respects foreign keys. Profiles stay so the account still works.
-const DELETE_TABLES = ['error_log', 'mcp_edit_log', 'mcp_tokens', 'hl_write_log', 'goal_items', 'goals', 'vault_items', 'program_lessons', 'program_modules',
+const DELETE_TABLES = ['workspace_members', 'error_log', 'mcp_edit_log', 'mcp_tokens', 'hl_write_log', 'goal_items', 'goals', 'vault_items', 'program_lessons', 'program_modules',
   'programs', 'graphic_versions', 'graphics', 'brand_board', 'email_sequences', 'funnel_versions', 'funnels', 'learning_signals', 'research_posts',
   'research_creators', 'content_items', 'approvals', 'agent_routines', 'messages', 'threads', 'agents', 'brand_dna', 'style_guides',
   'brain_facts', 'brain_chunks', 'brain_sources', 'offers', 'connections', 'provider_keys', 'audit_log'];
 
 export default handler(['POST'], async (req, body) => {
-  const { user, db, admin } = await requireOwner(req);
+  // Members may report and clear errors; everything else here is the owner's.
+  const { user, db, admin } = await requireOwner(req, { ownerOnly: !['log_error', 'errors_clear'].includes(body.action) });
 
   if (body.action === 'export') {
     const out = { exported_at: new Date().toISOString(), note: 'API keys and embeddings are not included.' };
@@ -85,8 +86,44 @@ export default handler(['POST'], async (req, body) => {
     return { ok: true };
   }
 
+  // Team. Members sign in with a magic link like the owner; they never see keys or MCP tokens.
+  if (body.action === 'member_invite') {
+    const email = String(body.email || '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 200) throw new HttpError(400, 'Enter a valid email');
+    if (email === user.email) throw new HttpError(400, 'That is your own email');
+    const { count } = await admin.from('workspace_members').select('id', { count: 'exact', head: true }).eq('owner_id', user.id);
+    if (count >= 5) throw new HttpError(400, 'Up to 5 team members. Remove one first.');
+    // Find or create the sign-in account. Works with public sign-ups turned off.
+    let memberId;
+    const { data: made, error: makeErr } = await admin.auth.admin.createUser({ email, email_confirm: true });
+    if (made?.user) memberId = made.user.id;
+    else if (/already|registered|exists/i.test(makeErr?.message || '')) {
+      const { data: list, error: listErr } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+      if (listErr) throw new HttpError(500, listErr.message);
+      memberId = list.users.find((u) => (u.email || '').toLowerCase() === email)?.id;
+    } else throw new HttpError(500, makeErr?.message || 'Could not create the account');
+    if (!memberId) throw new HttpError(500, 'Could not find that account');
+    const { data: row, error } = await admin.from('workspace_members').insert({ owner_id: user.id, member_id: memberId, email }).select('id, email, role, created_at').single();
+    if (error) throw new HttpError(/duplicate|unique/i.test(error.message) ? 400 : 500, /duplicate|unique/i.test(error.message) ? 'That person is already on a team' : error.message);
+    await audit(db, user.id, 'member_added', 'workspace_members', row.id, { email });
+    return { member: row };
+  }
+
+  if (body.action === 'member_remove') {
+    const { data: m, error } = await admin.from('workspace_members').select('id, member_id, email').eq('owner_id', user.id).eq('id', String(body.id || '')).maybeSingle();
+    if (error) throw new HttpError(500, error.message);
+    if (!m) throw new HttpError(404, 'Not on your team');
+    await admin.from('workspace_members').delete().eq('id', m.id).eq('owner_id', user.id);
+    // Delete their sign-in account too, so they cannot request new sign-in links.
+    await admin.auth.admin.deleteUser(m.member_id).catch(() => {});
+    await audit(db, user.id, 'member_removed', 'workspace_members', m.id, { email: m.email });
+    return { ok: true };
+  }
+
   if (body.action === 'delete') {
     if (body.confirm !== 'delete') throw new HttpError(400, 'Type "delete" to confirm');
+    const { data: team } = await admin.from('workspace_members').select('member_id').eq('owner_id', user.id);
+    for (const m of team || []) await admin.auth.admin.deleteUser(m.member_id).catch(() => {});
     const { data: files } = await admin.storage.from('brain').list(user.id, { limit: 1000 });
     if (files?.length) await admin.storage.from('brain').remove(files.map((f) => `${user.id}/${f.name}`));
     for (const t of DELETE_TABLES) {

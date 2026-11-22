@@ -22,7 +22,7 @@ async function toExact(b64, type, w, h) {
   return new Promise((r) => c.toBlob(r, 'image/png'));
 }
 async function upload(blob, folder, name = 'image.png') {
-  const path = `${live.user.id}/${folder}/${crypto.randomUUID()}-${name.replace(/[^\w.\-]+/g, '_').slice(-80)}`;
+  const path = `${live.ownerId}/${folder}/${crypto.randomUUID()}-${name.replace(/[^\w.\-]+/g, '_').slice(-80)}`;
   const { error } = await live.sb.storage.from('brain').upload(path, blob, { contentType: blob.type || 'image/png' });
   if (error) throw new Error(error.message);
   return path;
@@ -87,10 +87,10 @@ export async function render(el, ctx) {
     const blob = await toExact(r.b64, r.media_type, w, h);
     const path = await upload(blob, 'graphics', `${(format || graphic.format).replace(/\s+/g, '-').toLowerCase()}.png`);
     let g = graphic;
-    if (!g) [g] = await q(live.sb.from('graphics').insert({ owner_id: live.user.id, format, width: w, height: h, title: headline || format, brief: { headline, notes, model, reference_path } }).select());
+    if (!g) [g] = await q(live.sb.from('graphics').insert({ owner_id: live.ownerId, format, width: w, height: h, title: headline || format, brief: { headline, notes, model, reference_path } }).select());
     const versionNo = (versions.filter((v) => v.graphic_id === g.id)[0]?.version_no || 0) + 1;
-    const [v] = await q(live.sb.from('graphic_versions').insert({ owner_id: live.user.id, graphic_id: g.id, version_no: versionNo, storage_path: path, prompt: r.prompt }).select('id'));
-    const [ap] = await q(live.sb.from('approvals').insert({ owner_id: live.user.id, type: 'Graphic', title: `${g.title || g.format} v${versionNo}`, payload: { body: `${g.format}, ${w} × ${h}. ${instruction ? 'Edit: ' + instruction : (headline || '')}`, graphic_id: g.id, graphic_version_id: v.id, storage_path: path }, tags: ['graphic'], source_agent: 'Designer', target_module: 'graphics', authored_by: 'ai' }).select('id'));
+    const [v] = await q(live.sb.from('graphic_versions').insert({ owner_id: live.ownerId, graphic_id: g.id, version_no: versionNo, storage_path: path, prompt: r.prompt }).select('id'));
+    const [ap] = await q(live.sb.from('approvals').insert({ owner_id: live.ownerId, type: 'Graphic', title: `${g.title || g.format} v${versionNo}`, payload: { body: `${g.format}, ${w} × ${h}. ${instruction ? 'Edit: ' + instruction : (headline || '')}`, graphic_id: g.id, graphic_version_id: v.id, storage_path: path }, tags: ['graphic'], source_agent: 'Designer', target_module: 'graphics', authored_by: 'ai' }).select('id'));
     await q(live.sb.from('graphic_versions').update({ approval_id: ap.id }).eq('id', v.id));
     await q(live.sb.from('graphics').update({ current_version: versionNo }).eq('id', g.id));
     ctx.refreshNav(); toast(`Saved v${versionNo} (${w} × ${h}). It is in Approvals.${r.cost ? ` Cost $${Number(r.cost).toFixed(3)}.` : ''}`, { ms: 6000 });
@@ -146,8 +146,8 @@ export async function render(el, ctx) {
     const save = async (msg = 'Brand board saved') => {
       const row = { palettes: board.palettes, fonts: board.fonts, logo_path: board.logo_path || null, photo_paths: board.photo_paths || [] };
       try {
-        if (board._new) { await q(live.sb.from('brand_board').insert({ owner_id: live.user.id, ...row })); }
-        else { const { data, error } = await live.sb.from('brand_board').update({ ...row, version: board.version + 1 }).eq('owner_id', live.user.id).eq('version', board.version).select().maybeSingle(); if (error || !data) throw new Error(error?.message || 'Changed elsewhere. Reload and try again.'); }
+        if (board._new) { await q(live.sb.from('brand_board').insert({ owner_id: live.ownerId, ...row })); }
+        else { const { data, error } = await live.sb.from('brand_board').update({ ...row, version: board.version + 1 }).eq('owner_id', live.ownerId).eq('version', board.version).select().maybeSingle(); if (error || !data) throw new Error(error?.message || 'Changed elsewhere. Reload and try again.'); }
         toast(msg); await refresh();
       } catch (e) { toast(e.message); }
     };

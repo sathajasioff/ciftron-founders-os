@@ -283,3 +283,21 @@ Keys and tokens are removed before anything is saved. Entries older than 30 days
 ## Screens you could cut
 
 See `docs/CUT-LIST.md`. Nothing has been removed yet.
+
+# Team members
+
+1. **Required:** in Supabase SQL Editor, run `supabase/migrations/20261122000007_team.sql`.
+2. In the OS, open **Connections and Settings → Team**, type the person's email and click **Add member**.
+3. Tell them to open the OS, enter that email and click the sign-in link they receive. There's no password, and public sign-ups can stay off.
+
+**What members can do:** every screen, AI Team and routines, Brain, approving drafts, and sending to HighLevel after the preview.
+**What only you can do:** add, test or remove API keys; MCP tokens and their undo log; the team list; export; delete all data.
+
+Notes:
+
+- Everything a member creates belongs to your workspace.
+- Approval and HighLevel logs record who did each action.
+- AI calls use your keys, so their usage is on your bill.
+- **Remove** cuts access immediately and deletes their sign-in account. Work they did stays.
+- Up to 5 members. Each person can only be on one team.
+- Supabase's built-in email sender allows only a few sign-in emails per hour. If links stop arriving with several people, add your own SMTP in **Supabase → Authentication → Emails**.

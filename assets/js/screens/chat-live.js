@@ -56,7 +56,7 @@ export async function render(el, ctx) {
       const attachments = [];
       for (const f of pending) {
         if (f.size > 20 * 1024 * 1024) throw new Error(`${f.name} is over 20 MB`);
-        const path = `${live.user.id}/chat/${crypto.randomUUID()}-${f.name.replace(/[^\w.\-]+/g, '_').slice(-100)}`;
+        const path = `${live.ownerId}/chat/${crypto.randomUUID()}-${f.name.replace(/[^\w.\-]+/g, '_').slice(-100)}`;
         const { error } = await live.sb.storage.from('brain').upload(path, f, { contentType: f.type || 'application/octet-stream' });
         if (error) throw new Error(error.message);
         attachments.push({ path, name: f.name, mime: f.type });
@@ -77,7 +77,7 @@ export async function render(el, ctx) {
   async function saveToApprovals(m, btn) {
     btn.disabled = true;
     try {
-      await q(live.sb.from('approvals').insert({ owner_id: live.user.id, type: 'Idea', title: m.content.split('\n').find((l) => l.trim())?.replace(/[#*]/g, '').slice(0, 120) || 'Chat answer', payload: { body: m.content, thread_id: st.threadId }, source_agent: 'AI Chat', target_module: 'content', authored_by: 'ai' }));
+      await q(live.sb.from('approvals').insert({ owner_id: live.ownerId, type: 'Idea', title: m.content.split('\n').find((l) => l.trim())?.replace(/[#*]/g, '').slice(0, 120) || 'Chat answer', payload: { body: m.content, thread_id: st.threadId }, source_agent: 'AI Chat', target_module: 'content', authored_by: 'ai' }));
       toast('Saved to Approvals'); ctx.refreshNav(); btn.textContent = 'Saved';
     } catch (e) { toast(e.message); btn.disabled = false; }
   }

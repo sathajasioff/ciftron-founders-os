@@ -23,6 +23,7 @@ Run everything with `npm run test:all`. The unit, database and API tests need no
 | Storage only in the owner's folder | db "storage" |
 | Security headers and CSP | prod "security headers", "CSP"; smoke and e2e run under the real CSP |
 | Error log with secrets removed | prod "redact", "errorRow", "server handler: 5xx errors are logged"; api "server crash", "browser errors"; db "error_log"; e2e 27 |
+| Team members: owner's data, no keys, MCP, team, export or delete; removal cuts access | db "members work on the owner data"; api "team" ×2; e2e 28, 29 |
 | Data export without secrets, delete everything | api "account: export has no secrets"; e2e 10 |
 | **Brain and Brand DNA** | |
 | Upload, extract, chunk, embed | unit "chunkText", "htmlToText", "extractText"; e2e 7 |

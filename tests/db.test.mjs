@@ -8,6 +8,7 @@ import { vector } from '@electric-sql/pglite-pgvector';
 
 const A = '11111111-1111-1111-1111-111111111111';
 const B = '22222222-2222-2222-2222-222222222222';
+const M = '44444444-4444-4444-4444-444444444444';
 let db;
 
 const SUPABASE_STUB = `
@@ -16,7 +17,9 @@ const SUPABASE_STUB = `
   create table auth.users (id uuid primary key, email text);
   create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
   grant usage on schema auth, extensions, storage, public to anon, authenticated, service_role;
+  create function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb $$;
   grant execute on function auth.uid() to anon, authenticated, service_role;
+  grant execute on function auth.jwt() to anon, authenticated, service_role;
   create table storage.buckets (id text primary key, name text, public boolean, file_size_limit bigint);
   create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text, name text);
   create function storage.foldername(name text) returns text[] language sql immutable as $$ select string_to_array(name, '/') $$;
@@ -25,11 +28,12 @@ const SUPABASE_STUB = `
   alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
   alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
   alter default privileges in schema public grant execute on functions to anon, authenticated, service_role;
-  insert into auth.users values ('${A}', 'owner@example.com'), ('${B}', 'other@example.com');
+  insert into auth.users values ('${A}', 'owner@example.com'), ('${B}', 'other@example.com'), ('${M}', 'member@example.com');
 `;
 
+const EMAIL = { [A]: 'owner@example.com', [B]: 'other@example.com', [M]: 'member@example.com' };
 const as = async (uid, sql, params) => {
-  await db.exec(`reset role; set request.jwt.claim.sub = '${uid}'; set role authenticated;`);
+  await db.exec(`reset role; set request.jwt.claim.sub = '${uid}'; set request.jwt.claims = '{"email":"${EMAIL[uid] || ''}"}'; set role authenticated;`);
   try { return await db.query(sql, params); } finally { await db.exec('reset role;'); }
 };
 const vec = (seed) => '[' + Array.from({ length: 1536 }, (_, i) => (i === seed ? 1 : 0.001)).join(',') + ']';
@@ -157,4 +161,41 @@ test('error_log: owner reads own rows only, and cannot write or delete from the 
   await assert.rejects(as(A, `insert into error_log (owner_id, source, message) values ($1, 'browser', 'x')`, [A]), /permission denied/);
   await assert.rejects(as(A, 'delete from error_log'), /permission denied/);
   await assert.rejects(as(A, `insert into error_log (owner_id, source, message) values ($1, 'nope', 'x')`, [A]).catch(() => asService(`insert into error_log (owner_id, source, message) values ($1, 'nope', 'x')`, [A])), /check/);
+});
+
+// Team members
+test('members work on the owner data; settings, keys and MCP stay with the owner', async () => {
+  // Before joining, M sees nothing of A's.
+  assert.equal((await as(M, 'select * from brain_facts')).rows.length, 0);
+  await asService(`insert into workspace_members (owner_id, member_id, email) values ($1, $2, 'member@example.com')`, [A, M]);
+  assert.equal((await as(M, 'select public.workspace_owner() as o')).rows[0].o, A);
+  assert.equal((await as(A, 'select public.workspace_owner() as o')).rows[0].o, A);
+  // Reads and writes A's work; new rows belong to A.
+  assert.ok((await as(M, 'select * from brain_facts')).rows.every((r) => r.owner_id === A));
+  const { rows: [f] } = await as(M, `insert into brain_facts (category, text) values ('voice', 'From the member') returning owner_id`);
+  assert.equal(f.owner_id, A);
+  assert.equal((await as(B, `select * from brain_facts where text = 'From the member'`)).rows.length, 0);
+  // Logs record who did it.
+  const { rows: [a] } = await as(M, `insert into audit_log (owner_id, action, entity) values ($1, 'test', 'x') returning actor_email`, [A]);
+  assert.equal(a.actor_email, 'member@example.com');
+  // Settings: readable, not writable.
+  await asService(`insert into connections (owner_id, provider, config) values ($1, 'highlevel', '{"location_id":"loc"}') on conflict do nothing`, [A]);
+  assert.equal((await as(M, `select * from connections where provider = 'highlevel'`)).rows.length, 1);
+  assert.equal((await as(M, `update connections set config = '{}' where provider = 'highlevel' returning provider`)).rows.length, 0);
+  await assert.rejects(as(M, `insert into connections (owner_id, provider, config) values ($1, 'openai', '{}')`, [A]), /row-level security/);
+  // Keys and MCP: never.
+  await assert.rejects(as(M, 'select * from provider_keys'), /permission denied/);
+  assert.equal((await as(M, 'select id from mcp_tokens')).rows.length, 0);
+  assert.equal((await as(M, 'select id from mcp_edit_log')).rows.length, 0);
+  // Files: the owner's folder only.
+  await as(M, `insert into storage.objects (bucket_id, name) values ('brain', '${A}/chat/x.png')`);
+  await assert.rejects(as(M, `insert into storage.objects (bucket_id, name) values ('brain', '${M}/x.png')`), /row-level security/);
+  // The team list: visible to both, editable by neither from the browser.
+  assert.equal((await as(A, 'select email from workspace_members')).rows.length, 1);
+  assert.equal((await as(M, 'select email from workspace_members')).rows.length, 1);
+  assert.equal((await as(B, 'select email from workspace_members')).rows.length, 0);
+  await assert.rejects(as(A, `insert into workspace_members (owner_id, member_id, email) values ($1, $2, 'x')`, [A, B]), /permission denied/);
+  // Removed: back to nothing.
+  await asService(`delete from workspace_members where member_id = $1`, [M]);
+  assert.equal((await as(M, 'select * from brain_facts')).rows.length, 0);
 });

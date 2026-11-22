@@ -31,8 +31,8 @@ function shell() {
       <div class="brand"><div class="brand-mark"><span></span></div><div><div class="brand-name">Founders AI OS</div><div class="brand-sub">Ciftron</div></div></div>
       <div id="nav"></div>
       <div class="sidebar-foot">
-        <div class="avatar">${owner.initials}</div>
-        <div class="grow small"><div style="font-weight:600;line-height:1.2">${esc(owner.name)}</div><div class="xs muted">${live.on ? esc(live.user.email) : 'Owner'}</div></div>
+        <div class="avatar">${live.on && live.role === 'member' ? esc((live.user.email || '?')[0].toUpperCase()) : owner.initials}</div>
+        <div class="grow small"><div style="font-weight:600;line-height:1.2">${live.on && live.role === 'member' ? 'Team member' : esc(owner.name)}</div><div class="xs muted">${live.on ? esc(live.user.email) : 'Owner'}</div></div>
         ${live.on ? `<button class="btn btn-ghost btn-sm" id="signout" title="Sign out">Sign out</button>` : ''}
       </div>
     </nav>

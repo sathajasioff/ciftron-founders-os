@@ -3,7 +3,7 @@
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
-import { installFakeSupabase, invoke, OWNER, USER_TOKEN, STRANGER_TOKEN } from './fixtures/fake-rest.mjs';
+import { installFakeSupabase, invoke, OWNER, MEMBER, USER_TOKEN, STRANGER_TOKEN, MEMBER_TOKEN } from './fixtures/fake-rest.mjs';
 import { encrypt } from '../api/_lib/crypto.js';
 import { hashToken } from '../api/_lib/mcp.js';
 
@@ -247,4 +247,61 @@ test('server crash: logged to error_log with the owner, secrets removed', async 
   assert.equal(e.owner_id, OWNER.id);
   assert.equal(e.route, '/api/chat');
   assert.ok(!JSON.stringify(e).includes('LEAKEDKEY') && !r.body.error.includes('LEAKEDKEY'));
+});
+
+test('team: the owner adds a member, who works on the owner data but cannot touch keys, MCP, team, export or delete', async () => {
+  fake = installFakeSupabase({
+    seed: { provider_keys: [key('anthropic', 'api_key', 'sk-ant-k')], agents: [{ id: 'ag1', owner_id: OWNER.id, slug: 'copywriter', name: 'Copywriter', enabled: true, instructions: '', version: 1 }] },
+    external: async () => reply('<draft type="Caption" title="From member" language="en" target="content">Text</draft>'),
+  });
+  const account = await load('account'), keys = await load('keys'), chat = await load('chat');
+  // Not on the team yet: refused like any stranger.
+  assert.equal((await invoke(chat, { token: MEMBER_TOKEN, body: { message: 'hi' } })).status, 403);
+  // Only valid emails, not the owner's own, and members cannot invite.
+  assert.equal((await invoke(account, { body: { action: 'member_invite', email: 'nope' } })).status, 400);
+  assert.equal((await invoke(account, { body: { action: 'member_invite', email: OWNER.email } })).status, 400);
+  // The owner adds a brand-new person: a sign-in account is created and they join the team.
+  const added = await invoke(account, { body: { action: 'member_invite', email: 'New.Person@Example.com' } });
+  assert.equal(added.status, 200, JSON.stringify(added.body));
+  assert.equal(fake.tables.workspace_members[0].email, 'new.person@example.com');
+  assert.equal(fake.tables.workspace_members[0].owner_id, OWNER.id);
+  // Someone who already has an account can be added too (found, not recreated).
+  fake.tables.workspace_members = [];
+  fake.tables.__users.push({ id: MEMBER.id, email: MEMBER.email });
+  const again = await invoke(account, { body: { action: 'member_invite', email: MEMBER.email } });
+  assert.equal(again.status, 200, JSON.stringify(again.body));
+  assert.equal(fake.tables.workspace_members[0].member_id, MEMBER.id);
+  // The member works in the owner's workspace: drafts are saved under the owner, using the owner's key server-side.
+  const r = await invoke(chat, { token: MEMBER_TOKEN, body: { agent_slug: 'copywriter', message: 'A caption' } });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(fake.tables.approvals[0].owner_id, OWNER.id);
+  assert.equal(fake.tables.approvals[0].title, 'From member');
+  // Key status is visible, keys are not changeable.
+  const st = await invoke(keys, { method: 'GET', token: MEMBER_TOKEN });
+  assert.equal(st.status, 200);
+  assert.ok(!JSON.stringify(st.body).includes('sk-ant'));
+  for (const call of [{ body: { provider: 'openai', values: { api_key: 'sk-x' } } }, { body: { action: 'test', provider: 'anthropic' } }, { method: 'DELETE', body: { provider: 'anthropic' } }]) {
+    assert.equal((await invoke(keys, { token: MEMBER_TOKEN, ...call })).status, 403, JSON.stringify(call));
+  }
+  assert.equal(fake.tables.provider_keys.length, 1);
+  // Owner-only account actions.
+  for (const action of ['export', 'mcp_token_create', 'mcp_undo', 'member_invite', 'member_remove', 'delete']) {
+    const res = await invoke(account, { token: MEMBER_TOKEN, body: { action, name: 'x', email: 'a@b.co', confirm: 'delete' } });
+    assert.equal(res.status, 403, action);
+  }
+  assert.equal((await invoke(account, { token: MEMBER_TOKEN, body: { action: 'log_error', message: 'oops' } })).status, 200);
+  // Removing them deletes their sign-in account; they are refused right away.
+  const id = fake.tables.workspace_members[0].id;
+  assert.equal((await invoke(account, { body: { action: 'member_remove', id } })).status, 200);
+  assert.equal(fake.tables.workspace_members.length, 0);
+  assert.ok(fake.log.some((l) => l.auth === `DELETE /auth/v1/admin/users/${MEMBER.id}`));
+  assert.equal((await invoke(chat, { token: MEMBER_TOKEN, body: { message: 'hi' } })).status, 403);
+});
+
+test('team: at most 5 members', async () => {
+  fake = installFakeSupabase({ seed: { workspace_members: Array.from({ length: 5 }, (_, i) => ({ id: `m${i}`, owner_id: OWNER.id, member_id: `u${i}`, email: `p${i}@x.co` })) } });
+  const account = await load('account');
+  const r = await invoke(account, { body: { action: 'member_invite', email: 'sixth@x.co' } });
+  assert.equal(r.status, 400);
+  assert.match(r.body.error, /Up to 5/);
 });

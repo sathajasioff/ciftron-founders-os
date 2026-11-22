@@ -29,7 +29,11 @@ export const userClient = (token) => createClient(supabaseUrl(), env('SUPABASE_A
   global: { headers: { Authorization: `Bearer ${token}` } },
 });
 
-export async function requireOwner(req) {
+// Signs in the owner or a team member. Members act inside the owner's workspace:
+// user.id is always the owner's id (every row belongs to the owner), user.actorId and
+// user.email are the person signed in, and user.role is 'owner' or 'member'.
+// Pass { ownerOnly: true } for keys, MCP tokens, the team list, export and delete.
+export async function requireOwner(req, { ownerOnly = false } = {}) {
   const h = req.headers.authorization || '';
   const token = h.startsWith('Bearer ') ? h.slice(7) : '';
   if (!token) throw new HttpError(401, 'Sign in first');
@@ -37,9 +41,17 @@ export async function requireOwner(req) {
   const { data, error } = await admin.auth.getUser(token);
   if (error || !data?.user) throw new HttpError(401, 'Session expired. Sign in again.');
   const owner = env('OWNER_EMAIL').trim().toLowerCase();
-  if ((data.user.email || '').toLowerCase() !== owner) throw new HttpError(403, 'This OS has a single owner');
-  req.ownerId = data.user.id;
-  return { user: data.user, db: userClient(token), admin };
+  const email = (data.user.email || '').toLowerCase();
+  let ownerId = data.user.id, role = 'owner';
+  if (email !== owner) {
+    const { data: m } = await admin.from('workspace_members').select('owner_id').eq('member_id', data.user.id).maybeSingle();
+    if (!m) throw new HttpError(403, 'This OS has a single owner');
+    ownerId = m.owner_id;
+    role = 'member';
+  }
+  if (ownerOnly && role !== 'owner') throw new HttpError(403, 'Only the owner can do this');
+  req.ownerId = ownerId;
+  return { user: { ...data.user, id: ownerId, actorId: data.user.id, email, role }, db: userClient(token), admin };
 }
 
 export function handler(methods, fn) {

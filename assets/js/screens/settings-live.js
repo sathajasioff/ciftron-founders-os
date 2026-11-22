@@ -6,6 +6,7 @@ import { setTheme, paintChrome } from '../app.js';
 import { hlWrite } from '../hl-ui.js';
 import { mountMcp } from '../mcp-ui.js';
 import { mountErrors } from '../errors-ui.js';
+import { mountTeam } from '../team-ui.js';
 
 const HL_SCOPES = {
   read: ['locations.readonly', 'opportunities.readonly', 'contacts.readonly', 'products.readonly', 'funnels/funnel.readonly', 'socialplanner/account.readonly', 'locations/customValues.readonly'],
@@ -29,12 +30,13 @@ const ui = { q: '', filter: 'all' };
 
 export async function render(el) {
   let providers = [], log = [];
-  let errorsCard = null;
+  let errorsCard = null, teamCard = null;
   const load = async () => {
     const [k, l] = await Promise.all([api('keys', { method: 'GET' }), q(live.sb.from('hl_write_log').select('created_at, action, target, status').order('created_at', { ascending: false }).limit(20))]);
     providers = k.providers; log = l;
   };
 
+  const isOwner = live.role !== 'member';
   const draw = () => {
     const list = providers.filter((c) => (ui.filter === 'all' || (ui.filter === 'on' ? c.connected : !c.connected)) && `${c.name} ${DESC[c.id]}`.toLowerCase().includes(ui.q.toLowerCase()));
     const theme = document.documentElement.dataset.theme;
@@ -52,7 +54,7 @@ export async function render(el) {
         <p class="small muted" style="margin-top:6px">${esc(DESC[c.id])}</p>
         ${c.connected ? `<div class="xs mono muted">${c.last4 ? 'Key ending ' + esc(c.last4) : 'Saved'}${Object.entries(c.config || {}).filter(([, v]) => v).map(([k, v]) => ` · ${esc(FIELD_LABEL[k] || k)}: ${esc(v)}`).join('')}</div>` : ''}
         ${c.test_message ? `<div class="xs ${c.status === 'error' ? 'down' : 'muted'}">${esc(c.test_message)}</div>` : ''}
-        <div class="row" style="margin-top:10px">${c.connected
+        <div class="row" style="margin-top:10px">${!isOwner ? '<span class="xs muted">Only the owner can change keys.</span>' : c.connected
           ? `<button class="btn btn-sm" data-test="${c.id}">${icon('refresh')} ${t('c.test')}</button><button class="btn btn-sm btn-ghost" data-conn="${c.id}">${t('c.edit')}</button><button class="btn btn-sm btn-ghost" data-rm="${c.id}" style="margin-left:auto" title="Remove key">${icon('trash')}</button>`
           : `<button class="btn btn-sm btn-primary" data-conn="${c.id}">${t('c.connect')}</button>`}</div></div>`).join('') || '<div class="empty">No connections match.</div>'}</div>
 
@@ -61,21 +63,22 @@ export async function render(el) {
           <div class="row between"><span class="small">${t('set.theme')}</span><div class="seg"><button data-th="light" class="${theme === 'light' ? 'active' : ''}">${t('set.light')}</button><button data-th="dark" class="${theme === 'dark' ? 'active' : ''}">${t('set.dark')}</button></div></div>
           <div class="row between"><span class="small">${t('c.language')}</span><div class="seg"><button data-l="en" class="${getLang() === 'en' ? 'active' : ''}">English</button><button data-l="fr" class="${getLang() === 'fr' ? 'active' : ''}">Français (QC)</button></div></div>
         </div>
-        <div class="card stack"><h3>${t('set.export')}</h3><p class="small muted">Download everything the OS stores as JSON. API keys and embeddings are never included.</p>
-          <div><button class="btn" id="exp">${icon('download')} Export JSON</button></div></div>
+        ${isOwner ? `<div class="card stack"><h3>${t('set.export')}</h3><p class="small muted">Download everything the OS stores as JSON. API keys and embeddings are never included.</p>
+          <div><button class="btn" id="exp">${icon('download')} Export JSON</button></div></div>` : ''}
         <div class="card"><div class="card-head"><h3>${t('set.log')}</h3><span class="xs muted">Every write is logged</span></div>
           ${log.length ? `<div class="table-wrap" style="border:0"><table class="table"><thead><tr><th>When</th><th>Action</th><th>Target</th><th>Status</th></tr></thead><tbody>
           ${log.map((w) => `<tr><td class="small muted" style="white-space:nowrap">${new Date(w.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</td><td class="small">${esc(w.action)}</td><td class="small">${esc(w.target)}</td><td><span class="chip ${w.status === 'sent' ? 'ok' : 'danger'}">${esc(w.status)}</span></td></tr>`).join('')}</tbody></table></div>`
           : '<p class="small muted">No HighLevel writes yet.</p>'}</div>
         <div class="card stack" id="cvcard"><div class="card-head" style="margin:0"><h3>HighLevel custom values (OS_)</h3>${providers.find((p) => p.id === 'highlevel')?.connected ? '<button class="btn btn-sm" id="cvload">Load</button>' : '<span class="chip">Connect HighLevel</span>'}</div>
           <p class="small muted">The OS can only create or change custom values whose name starts with OS_. Each change is previewed and logged.</p><div id="cvlist"></div></div>
-        <div class="card stack" id="mcpcard" style="grid-column:1/-1"></div>
+        <div class="card stack" id="teamcard" style="grid-column:1/-1"></div>
+        ${isOwner ? '<div class="card stack" id="mcpcard" style="grid-column:1/-1"></div>' : ''}
         <div class="card stack" id="errcard" style="grid-column:1/-1"></div>
       </div>
 
-      <div class="card" style="margin-top:16px;border-color:color-mix(in srgb,var(--danger) 45%,transparent)">
+      ${isOwner ? `<div class="card" style="margin-top:16px;border-color:color-mix(in srgb,var(--danger) 45%,transparent)">
         <h3 style="color:var(--danger)">${t('set.danger')}</h3><p class="small muted" style="margin-top:4px">Deletes all OS data: Brain, facts, offers, drafts, saved keys and logs. Your login stays. HighLevel is not touched. This cannot be undone.</p>
-        <div class="row wrap" style="margin-top:10px"><input class="input" id="del" placeholder='Type "delete" to confirm' style="max-width:260px" autocomplete="off"><button class="btn btn-danger solid" id="delbtn" disabled>Delete all OS data</button></div></div>`;
+        <div class="row wrap" style="margin-top:10px"><input class="input" id="del" placeholder='Type "delete" to confirm' style="max-width:260px" autocomplete="off"><button class="btn btn-danger solid" id="delbtn" disabled>Delete all OS data</button></div></div>` : ''}`;
 
     const cq = $('#cq', el); cq.oninput = () => { ui.q = cq.value; draw(); const c2 = $('#cq', el); c2.focus(); c2.setSelectionRange(ui.q.length, ui.q.length); };
     el.querySelectorAll('[data-f]').forEach((b) => b.onclick = () => { ui.filter = b.dataset.f; draw(); });
@@ -88,7 +91,7 @@ export async function render(el) {
     el.querySelectorAll('[data-rm]').forEach((b) => b.onclick = () => remove(providers.find((x) => x.id === b.dataset.rm)));
     el.querySelectorAll('[data-th]').forEach((b) => b.onclick = () => { setTheme(b.dataset.th); draw(); });
     el.querySelectorAll('[data-l]').forEach((b) => b.onclick = () => { setLang(b.dataset.l); paintChrome('connections'); draw(); });
-    $('#exp', el).onclick = async (ev) => { const __b = ev.currentTarget; 
+    if (isOwner) $('#exp', el).onclick = async (ev) => { const __b = ev.currentTarget; 
       const b = __b; b.disabled = true;
       try {
         const data = await api('account', { body: { action: 'export' } });
@@ -98,11 +101,13 @@ export async function render(el) {
       } catch (e) { toast(e.message); }
       b.disabled = false;
     };
-    mountMcp($('#mcpcard', el));
+    if (!teamCard) { teamCard = $('#teamcard', el); mountTeam(teamCard); } else $('#teamcard', el).replaceWith(teamCard);
+    if (isOwner) mountMcp($('#mcpcard', el));
     // The error log loads once per visit; search redraws reuse the same card.
     if (!errorsCard) { errorsCard = $('#errcard', el); mountErrors(errorsCard); } else $('#errcard', el).replaceWith(errorsCard);
     const cvl = $('#cvload', el); if (cvl) cvl.onclick = () => loadCustomValues();
     const del = $('#del', el), delbtn = $('#delbtn', el);
+    if (!del) return;
     del.oninput = () => { delbtn.disabled = del.value.trim() !== 'delete'; };
     delbtn.onclick = async () => {
       delbtn.disabled = true;

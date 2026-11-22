@@ -139,7 +139,7 @@ export async function render(el, ctx) {
       foot: `<button class="btn" data-close>${t('c.cancel')}</button><button class="btn btn-primary" data-ok>${t('c.save')}</button>`,
       onMount: (ov, close) => { ov.querySelector('[data-ok]').onclick = async () => {
         const title = ov.querySelector('#n-title').value.trim(); if (!title) return;
-        try { await q(live.sb.from('content_items').insert({ owner_id: live.user.id, title, format: ov.querySelector('#n-fmt').value, publish_date: ov.querySelector('#n-date').value || null, hook: ov.querySelector('#n-hook').value, stage: 'Idea', authored_by: 'me' })); close(); refresh(); }
+        try { await q(live.sb.from('content_items').insert({ owner_id: live.ownerId, title, format: ov.querySelector('#n-fmt').value, publish_date: ov.querySelector('#n-date').value || null, hook: ov.querySelector('#n-hook').value, stage: 'Idea', authored_by: 'me' })); close(); refresh(); }
         catch (e) { toast(e.message); }
       }; } });
   }
@@ -152,7 +152,7 @@ export async function render(el, ctx) {
       foot: `<button class="btn" data-close>${t('c.cancel')}</button><button class="btn btn-primary" data-ok>${t('c.save')}</button>`,
       onMount: (ov, close) => { ov.querySelector('[data-ok]').onclick = async () => {
         let h = ov.querySelector('#ch').value.trim(); if (!h) return; if (!h.startsWith('@')) h = '@' + h;
-        try { await q(live.sb.from('research_creators').insert({ owner_id: live.user.id, platform: ov.querySelector('#cp').value, handle: h, is_mine: ov.querySelector('#cm').checked })); close(); refresh(); } catch (e) { toast(/duplicate/.test(e.message) ? 'Already tracked' : e.message); }
+        try { await q(live.sb.from('research_creators').insert({ owner_id: live.ownerId, platform: ov.querySelector('#cp').value, handle: h, is_mine: ov.querySelector('#cm').checked })); close(); refresh(); } catch (e) { toast(/duplicate/.test(e.message) ? 'Already tracked' : e.message); }
       }; } });
   }
 
