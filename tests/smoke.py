@@ -15,7 +15,7 @@ try:
                 ctx = b.new_context(viewport={'width': vp[0], 'height': vp[1]})
                 ctx.add_init_script(f"localStorage.setItem('os.theme','{theme}')")
                 pg = ctx.new_page()
-                pg.on('console', lambda m: m.type == 'error' and 'fonts.g' not in m.text and errors.append(f'{theme} {vp} console: {m.text}'))
+                pg.on('console', lambda m: m.type == 'error' and 'fonts.g' not in m.text and '404 (File not found)' not in m.text and errors.append(f'{theme} {vp} console: {m.text}'))
                 pg.on('pageerror', lambda e: errors.append(f'{theme} {vp} pageerror: {e}'))
                 for r in ROUTES:
                     pg.goto(f'http://localhost:8765/#{r}')

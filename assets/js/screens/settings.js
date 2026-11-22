@@ -7,7 +7,8 @@ import { setTheme, paintChrome } from '../app.js';
 let q = '';
 let filter = 'all';
 
-export function render(el) {
+export function render(el, ctx = {}) {
+  if (ctx.live) return import('./settings-live.js').then((m) => m.render(el));
   const draw = () => {
     const list = connections.filter((c) => (filter === 'all' || (filter === 'on' ? c.connected : !c.connected)) && `${c.name} ${c.desc} ${c.cat}`.toLowerCase().includes(q.toLowerCase()));
     const theme = document.documentElement.dataset.theme;

@@ -6,7 +6,8 @@ let tab = 'facts';
 let cat = 'all';
 let status = 'all';
 
-export function render(el) {
+export function render(el, ctx = {}) {
+  if (ctx.live) return import('./brain-live.js').then((m) => m.render(el));
   const draw = () => {
     const proposed = facts.filter((f) => f.status === 'proposed').length;
     el.innerHTML = `

@@ -1,6 +1,11 @@
 import { t, getLang, setLang } from './i18n.js';
 import { icon, $, esc } from './ui.js';
 import { approvals, owner } from './data.js';
+import { live, initLive, loginScreen, api } from './live.js';
+
+// Screens backed by real data once Supabase is configured. The rest stay demo until their phase.
+const LIVE_ROUTES = ['brain', 'connections'];
+const PHASE = { chat: 3, team: 3, approvals: 3, pipeline: 4, content: 5, funnels: 5, emails: 5, graphics: 5, programs: 5, vault: 5, goals: 5, home: 3 };
 
 const NAV = [
   ['nav.workspace', [['home', 'home'], ['chat', 'chat'], ['team', 'team'], ['approvals', 'inbox']]],
@@ -22,7 +27,8 @@ function shell() {
       <div id="nav"></div>
       <div class="sidebar-foot">
         <div class="avatar">${owner.initials}</div>
-        <div class="grow small"><div style="font-weight:600;line-height:1.2">${esc(owner.name)}</div><div class="xs muted">Owner</div></div>
+        <div class="grow small"><div style="font-weight:600;line-height:1.2">${esc(owner.name)}</div><div class="xs muted">${live.on ? esc(live.user.email) : 'Owner'}</div></div>
+        ${live.on ? `<button class="btn btn-ghost btn-sm" id="signout" title="Sign out">Sign out</button>` : ''}
       </div>
     </nav>
     <div class="main">
@@ -38,6 +44,7 @@ function shell() {
       <main class="content" id="view" tabindex="-1"></main>
     </div>
   </div>`;
+  if (live.on) $('#signout').onclick = () => live.sb.auth.signOut();
   $('#menu-btn').onclick = () => $('#shell').classList.toggle('nav-open');
   $('#shell').addEventListener('click', (e) => { if (e.target.id === 'shell') $('#shell').classList.remove('nav-open'); });
   $('#theme-btn').onclick = () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
@@ -61,7 +68,9 @@ export function paintChrome(current) {
   const dark = document.documentElement.dataset.theme === 'dark';
   $('#theme-btn').innerHTML = icon(dark ? 'sun' : 'moon');
   $('#global-search').placeholder = t('top.search');
-  $('#demo-pill').textContent = t('top.demo');
+  const isLive = live.on && LIVE_ROUTES.includes(current);
+  $('#demo-pill').textContent = isLive ? 'Live' : live.on ? `${t('top.demo')} · Phase ${PHASE[current] || ''}` : t('top.demo');
+  $('#demo-pill').style.cssText = isLive ? 'border-style:solid;border-color:var(--accent);color:var(--text)' : '';
   [...$('#lang-seg').children].forEach((b) => b.classList.toggle('active', b.dataset.lang === getLang()));
 }
 
@@ -75,7 +84,7 @@ async function route() {
   try {
     const mod = cache[name] || (cache[name] = await import(`./screens/${FILE[name] || name}.js`));
     view.innerHTML = '';
-    mod.render(view, { params: new URLSearchParams(qs || ''), refreshNav: () => paintChrome(name) });
+    mod.render(view, { params: new URLSearchParams(qs || ''), refreshNav: () => paintChrome(name), live: live.on && LIVE_ROUTES.includes(name) });
   } catch (err) {
     console.error(err);
     view.innerHTML = `<div class="empty"><h2>Something went wrong</h2><p class="mono">${esc(err.message)}</p></div>`;
@@ -86,6 +95,11 @@ async function route() {
 }
 
 setLang(getLang());
-shell();
-window.addEventListener('hashchange', route);
-route();
+(async () => {
+  await initLive();
+  if (live.on && !live.session) return loginScreen($('#app'));
+  shell();
+  window.addEventListener('hashchange', route);
+  if (live.on) { try { await api('brain', { body: { action: 'bootstrap' } }); } catch (e) { console.error(e); } }
+  route();
+})();

@@ -1,0 +1,52 @@
+// Request handling shared by every server function: JSON in/out, owner-only auth.
+import { createClient } from '@supabase/supabase-js';
+
+export class HttpError extends Error {
+  constructor(status, message, extra) { super(message); this.status = status; this.extra = extra; }
+}
+
+const env = (k) => {
+  const v = process.env[k];
+  if (!v) throw new HttpError(500, `Server is missing the ${k} environment variable`);
+  return v;
+};
+
+export const adminClient = () => createClient(env('SUPABASE_URL'), env('SUPABASE_SERVICE_ROLE_KEY'), { auth: { persistSession: false } });
+
+// A Supabase client that acts as the signed-in user, so row level security applies.
+export const userClient = (token) => createClient(env('SUPABASE_URL'), env('SUPABASE_ANON_KEY'), {
+  auth: { persistSession: false },
+  global: { headers: { Authorization: `Bearer ${token}` } },
+});
+
+export async function requireOwner(req) {
+  const h = req.headers.authorization || '';
+  const token = h.startsWith('Bearer ') ? h.slice(7) : '';
+  if (!token) throw new HttpError(401, 'Sign in first');
+  const admin = adminClient();
+  const { data, error } = await admin.auth.getUser(token);
+  if (error || !data?.user) throw new HttpError(401, 'Session expired. Sign in again.');
+  const owner = env('OWNER_EMAIL').trim().toLowerCase();
+  if ((data.user.email || '').toLowerCase() !== owner) throw new HttpError(403, 'This OS has a single owner');
+  return { user: data.user, db: userClient(token), admin };
+}
+
+export function handler(methods, fn) {
+  return async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      if (!methods.includes(req.method)) throw new HttpError(405, 'Method not allowed');
+      const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+      const out = await fn(req, body, res);
+      if (!res.headersSent) res.status(200).json(out ?? { ok: true });
+    } catch (e) {
+      const status = e.status || 500;
+      if (status >= 500) console.error(e);
+      res.status(status).json({ error: e.message || 'Server error', ...(e.extra || {}) });
+    }
+  };
+}
+
+export async function audit(db, userId, action, entity, entityId, detail = {}) {
+  await db.from('audit_log').insert({ owner_id: userId, action, entity, entity_id: entityId ? String(entityId) : null, detail });
+}

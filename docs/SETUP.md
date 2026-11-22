@@ -1,0 +1,62 @@
+# Setup: Phase 2 (Supabase, keys, Brain)
+
+About 20 minutes. Do the steps in order.
+
+## 1. Create the Supabase project
+
+1. Go to supabase.com, create a project (region: Canada Central if offered, otherwise US East). Save the database password somewhere safe.
+2. Open **SQL Editor**, paste the whole of `supabase/migrations/20261122000001_schema.sql`, and run it.
+3. Paste and run `supabase/migrations/20261122000002_storage.sql`.
+
+Both should end with "Success. No rows returned".
+
+## 2. Lock sign-in to you
+
+1. **Authentication → Users → Add user → Create new user.** Enter your email, tick **Auto Confirm User**. Any password works; you sign in by email link.
+2. **Authentication → Sign In / Providers:** turn **off** "Allow new users to sign up". Leave Email enabled.
+3. **Authentication → URL Configuration:**
+   - Site URL: your Vercel URL (later `https://os.ciftron.com`)
+   - Redirect URLs: add the same URL, plus `http://localhost:3000` if you run it locally.
+
+## 3. Copy the keys
+
+**Project Settings → API** (or **API Keys**):
+
+| Vercel variable | Where it comes from |
+|---|---|
+| `SUPABASE_URL` | Project URL |
+| `SUPABASE_ANON_KEY` | anon public key (or the publishable key) |
+| `SUPABASE_SERVICE_ROLE_KEY` | service_role key (or a secret key). Server only. |
+| `ENCRYPTION_KEY` | Run `openssl rand -base64 32` once. Keep a copy offline: if you lose it, saved provider keys must be re-entered. |
+| `OWNER_EMAIL` | The email from step 2 |
+
+## 4. Add them to Vercel
+
+Vercel → your project → **Settings → Environment Variables**. Add all five for Production and Preview, then **Deployments → Redeploy**.
+
+## 5. First sign-in
+
+1. Open the site. You get the sign-in screen (if you still see demo data, the env vars are missing).
+2. Enter your email, click the link in your inbox.
+3. On first sign-in the OS creates your profile, your three offers (monthly prices), and adds the about_me brief as a Brain source.
+
+## 6. Connect AI keys
+
+**Connections and Settings:**
+
+- **Anthropic**: an API key from console.anthropic.com. Used for fact proposals and the style guide.
+- **OpenAI**: an API key from platform.openai.com. Used for embeddings (Brain search).
+
+Each is tested when you save. Other connections can wait for their phase.
+
+## 7. Fill the Brain
+
+1. **Brain → Sources:** click **Process** on "about_me (build brief)", then **Propose facts**.
+2. **Brain → Facts:** review each proposed fact. Each one shows the exact quote it came from. Approve, edit, star or reject.
+3. **Upload** more: sales call notes, transcripts, PDFs, your website link. Tick "writing samples" for things you wrote yourself (captions, emails, posts).
+4. **Style guide → Build style guide** once you have writing samples.
+5. **Brand DNA → Compile.** Recompile whenever the yellow banner says it is out of date.
+
+## Costs
+
+Embeddings with text-embedding-3-small are about 0.02 USD per million tokens, so a 100-page PDF costs well under a cent. Each "Propose facts" is one Claude call on up to about 60,000 characters of the source.
